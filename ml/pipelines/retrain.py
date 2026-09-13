@@ -30,7 +30,7 @@ from mlflow.exceptions import MlflowException
 from sklearn.model_selection import train_test_split
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from train_ai4i_models import MLFLOW_DB, load_features, run_xgboost  # noqa: E402
+from train_ai4i_models import MLFLOW_TRACKING_URI, load_features, run_xgboost  # noqa: E402
 
 MODEL_NAME = "ai4i-failure-classifier"
 ALIAS = "champion"
@@ -46,7 +46,7 @@ def _current_champion_f1(client: MlflowClient) -> tuple[float, str | None]:
 
 
 def retrain() -> dict:
-    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment("ai4i-failure-detection")
     client = MlflowClient()
 

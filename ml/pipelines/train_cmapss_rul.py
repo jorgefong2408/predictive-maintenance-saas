@@ -16,6 +16,7 @@ Uso:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -31,6 +32,7 @@ from evaluation.metrics import regression_metrics  # noqa: E402
 
 PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 MLFLOW_DB = Path(__file__).resolve().parents[1] / "mlflow.db"
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{MLFLOW_DB}")
 
 NON_FEATURE_COLS = {"unit_number", "cycle", "RUL", "subset"}
 
@@ -42,7 +44,7 @@ def select_features(train: pd.DataFrame) -> list[str]:
 
 
 def main() -> None:
-    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment("cmapss-rul-fd001")
 
     train = pd.read_parquet(PROCESSED_DIR / "cmapss_fd001_train.parquet")

@@ -1,0 +1,75 @@
+services:
+  postgres:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_USER: predictmaint
+      POSTGRES_PASSWORD: predictmaint
+      POSTGRES_DB: predictmaint
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U predictmaint"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mlflow:
+    # Debe coincidir con la versión de `mlflow` en pyproject.toml (cliente y
+    # servidor no son intercambiables entre versiones mayores: 3.x introdujo
+    # endpoints REST — ej. "logged models" — que un servidor 2.x no tiene).
+    image: ghcr.io/mlflow/mlflow:v3.16.0
+    command: >
+      mlflow server
+      --backend-store-uri sqlite:////mlflow/mlflow.db
+      --default-artifact-root mlflow-artifacts:/
+      --artifacts-destination /mlartifacts
+      --host 0.0.0.0
+      --port 5000
+    environment:
+      # Protección anti DNS-rebinding de MLflow 3.x valida el header Host;
+      # "mlflow" (nombre DNS del servicio en la red de compose) no está en
+      # su lista default (solo localhost/IPs privadas), hay que sumarlo.
+      MLFLOW_SERVER_ALLOWED_HOSTS: "mlflow:*,localhost:*,127.0.0.1:*"
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow_data:/mlflow
+      - mlflow_artifacts:/mlartifacts
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: >
+      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://predictmaint:predictmaint@postgres:5432/predictmaint
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
+      CORS_ORIGINS: '["http://localhost:5173"]'
+      RETRAIN_INTERVAL_HOURS: "24"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_WS_URL: ws://localhost:8000
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  mlflow_data:
+  mlflow_artifacts:

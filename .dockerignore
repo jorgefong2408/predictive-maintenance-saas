@@ -1,0 +1,14 @@
+.venv/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+**/__pycache__/
+.git/
+.pytest_cache/
+mlruns/
+mlartifacts/
+ml/mlflow.db
+ml/data/processed/
+ml/evaluation/drift_report.html
+*.db
+.env

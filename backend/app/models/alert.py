@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -16,7 +16,7 @@ class Alert(Base):
     id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)
     tenant_id: Mapped[str] = mapped_column(GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     asset_id: Mapped[str] = mapped_column(GUID(), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
-    triggered_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    triggered_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
     severity: Mapped[str] = mapped_column(String, nullable=False)
     alert_type: Mapped[str] = mapped_column(String, nullable=False)
     message: Mapped[str] = mapped_column(String, nullable=False)

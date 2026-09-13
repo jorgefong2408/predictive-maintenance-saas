@@ -16,6 +16,7 @@ Uso:
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -34,6 +35,10 @@ from evaluation.metrics import classification_metrics  # noqa: E402
 
 RAW_PATH = Path(__file__).resolve().parents[1] / "data" / "raw" / "ai4i2020.csv"
 MLFLOW_DB = Path(__file__).resolve().parents[1] / "mlflow.db"
+# Semana 8: en docker-compose, MLFLOW_TRACKING_URI apunta al servicio mlflow
+# real (http://mlflow:5000); sin esa variable (dev local sin Docker, Semanas
+# 3-7), cae al sqlite local — mismo código en ambos casos.
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", f"sqlite:///{MLFLOW_DB}")
 SENSOR_COLS = {
     "Air temperature [K]": "air_temperature",
     "Process temperature [K]": "process_temperature",
@@ -95,7 +100,7 @@ def run_xgboost(X_train, X_test, y_train, y_test) -> tuple[dict, XGBClassifier]:
 
 
 def main() -> None:
-    mlflow.set_tracking_uri(f"sqlite:///{MLFLOW_DB}")
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment("ai4i-failure-detection")
 
     X, y = load_features()

@@ -1,10 +1,14 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, ForeignKey, JSON, String, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.types import GUID, new_uuid
+
+if TYPE_CHECKING:
+    from app.models.tenant import Tenant
 
 
 class Asset(Base):
@@ -22,6 +26,6 @@ class Asset(Base):
     status: Mapped[str] = mapped_column(String, nullable=False, default="ok")
     asset_metadata: Mapped[dict] = mapped_column("metadata", JSON, nullable=False, default=dict)
     installed_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
 
     tenant: Mapped["Tenant"] = relationship(back_populates="assets")

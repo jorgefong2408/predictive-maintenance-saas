@@ -25,12 +25,16 @@ def _maybe_create_alert(db: Session, asset: Asset, tenant_id: str, prediction: P
     if prediction.prediction_type != "failure_probability" or prediction.value < FAILURE_PROBABILITY_WARNING:
         return
     severity = "critical" if prediction.value >= FAILURE_PROBABILITY_CRITICAL else "warning"
+    message = (
+        f"Probabilidad de falla {prediction.value:.0%} "
+        f"(modelo {prediction.model_name} v{prediction.model_version})"
+    )
     alert = Alert(
         tenant_id=tenant_id,
         asset_id=asset.id,
         severity=severity,
         alert_type="failure_probability_high",
-        message=f"Probabilidad de falla {prediction.value:.0%} (modelo {prediction.model_name} v{prediction.model_version})",
+        message=message,
     )
     db.add(alert)
     asset.status = severity

@@ -12,7 +12,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semana 5 — Backend / API (FastAPI, JWT multi-tenant, servicio de inferencia, Alembic, pytest)
 - [x] Semana 6 — Frontend (React + Vite + TS + Tailwind, alertas en tiempo real por WebSocket)
 - [x] Semana 7 — MLOps (drift con Evidently AI, reentrenamiento con promoción "champion", scheduler) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
-- [ ] Semana 8 — Infraestructura y despliegue
+- [x] Semana 8 — Infraestructura (Docker, docker-compose con Postgres+TimescaleDB y MLflow reales, K8s, CI/CD) — despliegue a AWS pendiente de decisión del usuario, ver abajo
 - [ ] Semana 9 — Observabilidad y pruebas
 - [ ] Semana 10 — Documentación y pulido
 
@@ -21,18 +21,19 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 | Fase | Dataset | Estado |
 |---|---|---|
 | MVP (clasificación de falla, baseline tabular) | [AI4I 2020 Predictive Maintenance (UCI)](https://archive.ics.uci.edu/dataset/601/ai4i+2020+predictive+maintenance+dataset) | Descargado en `ml/data/raw/ai4i2020.csv` |
-| Fase avanzada (RUL, series temporales) | NASA C-MAPSS (Turbofan Engine Degradation) | Pendiente (Semana 3-4) |
+| Fase avanzada (RUL, series temporales) | NASA C-MAPSS (Turbofan Engine Degradation) | Descargado y entrenado (`ml/pipelines/train_cmapss_rul.py`) |
 
 ## Estructura del repositorio
 
 ```
 predictive-maintenance-saas/
-├── backend/     # FastAPI + SQLAlchemy + Auth JWT multi-tenant
+├── backend/     # FastAPI + SQLAlchemy + Auth JWT multi-tenant + Dockerfile
 ├── ml/          # Notebooks, pipelines de entrenamiento, evaluación
-├── frontend/    # React + Vite + TypeScript + Tailwind
-├── infra/       # docker-compose, Kubernetes/Helm, Terraform
+├── frontend/    # React + Vite + TypeScript + Tailwind + Dockerfile (nginx)
+├── infra/       # infra/sql (esquema TimescaleDB), infra/k8s (manifiestos)
 ├── docs/        # Plan, decisiones, esquema de datos, casos de uso
-└── .github/workflows/  # CI/CD
+├── docker-compose.yml   # Postgres+TimescaleDB, MLflow, backend, frontend
+└── .github/workflows/   # CI/CD (lint, test, build+push a ghcr.io)
 ```
 
 ## Stack
@@ -56,11 +57,14 @@ Carga a Postgres/TimescaleDB (requiere `infra/sql/001_schema.sql` aplicado y `DA
 uv run python ml/pipelines/load_to_postgres.py
 ```
 
-`docker-compose.yml` con Postgres/TimescaleDB, backend, frontend y MLflow llega en la Semana 8 de `docs/PLAN.md`.
+Hay dos formas de correr el resto del stack — misma base de código en ambas, cambia solo `DATABASE_URL`/`MLFLOW_TRACKING_URI`:
 
-### Backend (API)
+- **Sin Docker** (SQLite local, ver sección Backend abajo) — más rápido para iterar en el backend.
+- **Con Docker** (`docker-compose.yml`, Postgres+TimescaleDB y MLflow reales) — ver "Semana 8" más abajo, es la que se probó de punta a punta.
 
-Sin Docker por ahora: corre sobre SQLite local (`backend/predictmaint.db`, ignorado por git). `DATABASE_URL` en `.env` apunta a Postgres+TimescaleDB cuando exista (Semana 8) — el código no cambia.
+### Backend (API) — sin Docker
+
+Corre sobre SQLite local (`backend/predictmaint.db`, ignorado por git).
 
 ```bash
 cd backend
@@ -93,4 +97,35 @@ uv run python ml/pipelines/detect_drift.py     # ml/evaluation/drift_report.html
 uv run python ml/pipelines/retrain.py          # nueva versión; promueve el alias "champion" solo si mejora el F1
 ```
 
-El backend expone lo mismo por API (rol admin): `POST /admin/models/ai4i-failure-classifier/retrain` y `GET /admin/models/ai4i-failure-classifier/versions`. Un `BackgroundScheduler` interno corre el reentrenamiento cada `RETRAIN_INTERVAL_HOURS` (default 24h, ver `.env.example`) — sustituto de Celery beat mientras no hay Docker/Redis (Semana 8).
+El backend expone lo mismo por API (rol admin): `POST /admin/models/ai4i-failure-classifier/retrain` y `GET /admin/models/ai4i-failure-classifier/versions`. Un `BackgroundScheduler` interno corre el reentrenamiento cada `RETRAIN_INTERVAL_HOURS` (default 24h, ver `.env.example`) — el plan permite explícitamente "Celery beat *o cron*"; se optó por esto último para no sumar Redis sin un uso real todavía.
+
+## Semana 8 — Infraestructura y despliegue
+
+### Docker Compose (probado de punta a punta)
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Levanta Postgres+TimescaleDB real (Alembic corre las migraciones al iniciar el backend, incluida la conversión a hypertable — ver `backend/alembic/versions/66036cd3183a_*.py`), un servidor MLflow real (no el sqlite embebido de desarrollo), el backend (`:8000`) y el frontend servido por nginx (`:5173`).
+
+**Paso único tras el primer `up`:** el MLflow del contenedor arranca vacío — hay que sembrar el Model Registry corriendo el pipeline de entrenamiento contra él (una vez; igual que en cualquier entorno nuevo de MLOps):
+
+```bash
+MLFLOW_TRACKING_URI=http://localhost:5000 uv run python ml/pipelines/train_ai4i_models.py
+MLFLOW_TRACKING_URI=http://localhost:5000 uv run python ml/pipelines/retrain.py   # fija el alias "champion"
+```
+
+Dos problemas reales que aparecieron al levantar esto por primera vez (documentados en `docker-compose.yml`):
+1. **Versión de imagen de MLflow.** El cliente `mlflow` local es 3.16.x; un servidor 2.x no tiene los endpoints REST que ese cliente espera (`/api/2.0/mlflow/logged-models`) y falla con 404. La imagen del servicio `mlflow` debe coincidir con la versión del paquete `mlflow` en `pyproject.toml`.
+2. **`default-artifact-root`.** Tiene que ser el esquema `mlflow-artifacts:/` (proxied a través del servidor por HTTP), no una ruta de archivo local — con una ruta local, cualquier cliente que no comparta el filesystem del contenedor de MLflow (ej. el backend, en su propio contenedor) falla al descargar el modelo con `No such artifact`.
+
+### Kubernetes / CI-CD
+
+- `.github/workflows/ci.yml`: lint + test (backend y frontend) en cada push/PR; build y push de imágenes a `ghcr.io` en `main`. El job de deploy a AWS existe como plantilla pero queda deshabilitado (`if: false`) — necesita credenciales de una cuenta real.
+- `infra/k8s/`: manifiestos planos (Postgres, MLflow, backend, frontend, Ingress) con la misma topología que `docker-compose.yml`. **Escritos pero no aplicados contra ningún cluster** — ver [`infra/k8s/README.md`](infra/k8s/README.md) para los pasos pendientes y por qué.
+
+### Por qué no hay despliegue real a AWS
+
+Requiere una cuenta de AWS del usuario, sus credenciales, y autorización explícita para el gasto que eso implica (EKS/ECS, Load Balancer, etc.) — no es algo que esta sesión deba decidir por su cuenta. Además, esta máquina ya tiene `kubectl` configurado contra un cluster EKS real de otro proyecto (`recomendaciones-cluster`); no se ejecutó ningún comando contra él.

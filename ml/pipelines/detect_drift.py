@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
-from evidently import Dataset, DataDefinition, Report
+from evidently import DataDefinition, Dataset, Report
 from evidently.presets import DataDriftPreset
 
 RAW_PATH = Path(__file__).resolve().parents[1] / "data" / "raw" / "ai4i2020.csv"

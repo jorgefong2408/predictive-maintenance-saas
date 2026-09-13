@@ -1,0 +1,62 @@
+# image: reemplazar por el que publica .github/workflows/ci.yml
+# (ghcr.io/<owner>/<repo>/backend:latest) una vez el repo esté en GitHub.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: predictmaint
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: backend }
+  template:
+    metadata:
+      labels: { app: backend }
+    spec:
+      initContainers:
+        - name: migrate
+          image: ghcr.io/OWNER/REPO/backend:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom: [{ configMapRef: { name: backend-config } }]
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+psycopg2://predictmaint:$(POSTGRES_PASSWORD)@postgres:5432/predictmaint"
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: POSTGRES_PASSWORD } }
+      containers:
+        - name: backend
+          image: ghcr.io/OWNER/REPO/backend:latest
+          ports: [{ containerPort: 8000 }]
+          envFrom: [{ configMapRef: { name: backend-config } }]
+          env:
+            - name: DATABASE_URL
+              value: "postgresql+psycopg2://predictmaint:$(POSTGRES_PASSWORD)@postgres:5432/predictmaint"
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: POSTGRES_PASSWORD } }
+            - name: JWT_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: JWT_SECRET_KEY } }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 15
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: predictmaint
+data:
+  MLFLOW_TRACKING_URI: "http://mlflow:5000"
+  CORS_ORIGINS: '["https://predictmaint.example.com"]'
+  RETRAIN_INTERVAL_HOURS: "24"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: predictmaint
+spec:
+  selector: { app: backend }
+  ports: [{ port: 8000, targetPort: 8000 }]

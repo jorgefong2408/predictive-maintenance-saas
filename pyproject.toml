@@ -36,7 +36,15 @@ backend = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.1.1",
+    "ruff>=0.16.7",
 ]
 
 [tool.uv]
 default-groups = ["ml", "backend", "dev"]
+
+[tool.ruff]
+line-length = 120
+exclude = ["backend/alembic/versions", "ml/notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

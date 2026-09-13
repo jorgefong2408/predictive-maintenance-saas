@@ -19,7 +19,7 @@ Uso:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -44,7 +44,7 @@ FAILURE_FLAGS = {
 }
 
 DEMO_TENANT_ID = uuid.uuid5(uuid.NAMESPACE_DNS, "acme-manufacturing.predictmaint")
-SERIES_START = datetime(2025, 1, 1, tzinfo=timezone.utc)
+SERIES_START = datetime(2025, 1, 1, tzinfo=UTC)
 SAMPLE_INTERVAL = timedelta(minutes=1)
 N_ASSETS = 12
 

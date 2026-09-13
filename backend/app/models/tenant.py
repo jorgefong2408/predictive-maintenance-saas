@@ -1,10 +1,15 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
 from app.models.types import GUID, new_uuid
+
+if TYPE_CHECKING:
+    from app.models.asset import Asset
+    from app.models.user import User
 
 
 class Tenant(Base):
@@ -14,7 +19,7 @@ class Tenant(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     slug: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     plan: Mapped[str] = mapped_column(String, nullable=False, default="free")
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
 
     users: Mapped[list["User"]] = relationship(back_populates="tenant")
     assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")

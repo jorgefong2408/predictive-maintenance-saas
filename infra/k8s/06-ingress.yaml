@@ -1,0 +1,43 @@
+# Requiere un ingress controller (ej. AWS Load Balancer Controller o
+# ingress-nginx) y cert-manager instalados en el cluster, más un dominio
+# real apuntando al Load Balancer — nada de esto se provisiona aquí.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: predictmaint
+  namespace: predictmaint
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts: ["predictmaint.example.com"]
+      secretName: predictmaint-tls
+  rules:
+    - host: predictmaint.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: frontend, port: { number: 80 } }
+          - path: /auth
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { number: 8000 } }
+          - path: /assets
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { number: 8000 } }
+          - path: /alerts
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { number: 8000 } }
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { number: 8000 } }
+          - path: /ws
+            pathType: Prefix
+            backend:
+              service: { name: backend, port: { number: 8000 } }

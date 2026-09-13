@@ -18,9 +18,10 @@ import argparse
 import json
 import sys
 import time
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator, TextIO
+from typing import TextIO
 
 import pandas as pd
 
@@ -42,7 +43,7 @@ def stream_batches(df: pd.DataFrame, limit: int | None = None) -> Iterator[list[
     grouped = df.groupby("time", sort=True)
     emitted = 0
     for _, batch in grouped:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         records = [
             {
                 "time": now,
