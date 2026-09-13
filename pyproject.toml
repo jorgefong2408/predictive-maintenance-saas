@@ -9,6 +9,7 @@ dependencies = []
 ml = [
     "jupyter>=1.1.1",
     "matplotlib>=3.11.2",
+    "mlflow>=3.16.0",
     "numpy>=2.5.3",
     "pandas>=3.0.5",
     "psycopg2-binary>=2.9.13",
@@ -17,6 +18,7 @@ ml = [
     "scikit-learn>=1.9.1",
     "seaborn>=0.13.2",
     "sqlalchemy>=2.0.52",
+    "xgboost>=3.4.1",
 ]
 backend = []
 dev = []

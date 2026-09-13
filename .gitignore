@@ -27,6 +27,7 @@ ml/data/processed/*
 # ML artifacts
 mlruns/
 mlartifacts/
+ml/mlflow.db
 *.pkl
 *.pt
 *.joblib

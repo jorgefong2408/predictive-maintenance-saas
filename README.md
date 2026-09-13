@@ -8,7 +8,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 
 - [x] Semana 0 — Diseño (dataset, esquema de datos, estructura de repo, casos de uso)
 - [x] Semanas 1-2 — Pipeline de datos (ingesta, EDA, esquema TimescaleDB, simulador tiempo real)
-- [ ] Semanas 3-4 — Modelado ML
+- [x] Semanas 3-4 — Modelado ML (baseline, Isolation Forest, XGBoost clasificación + RUL, MLflow) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [ ] Semana 5 — Backend / API
 - [ ] Semana 6 — Frontend
 - [ ] Semana 7 — MLOps
