@@ -14,13 +14,15 @@ router = APIRouter(prefix="/alerts", tags=["alerts"])
 @router.get("", response_model=list[AlertOut])
 def list_alerts(
     active_only: bool = Query(default=True),
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
     claims: Claims = Depends(get_current_claims),
     db: Session = Depends(get_db),
 ) -> list[Alert]:
     query = db.query(Alert).filter(Alert.tenant_id == claims.tenant_id)
     if active_only:
         query = query.filter(Alert.resolved_at.is_(None))
-    return query.order_by(Alert.triggered_at.desc()).all()
+    return query.order_by(Alert.triggered_at.desc()).offset(offset).limit(limit).all()
 
 
 @router.post("/{alert_id}/acknowledge", response_model=AlertOut)

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, CheckConstraint, Float, ForeignKey, String
+from sqlalchemy import JSON, CheckConstraint, Float, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -14,6 +14,9 @@ class Prediction(Base):
             "prediction_type IN ('rul_days', 'anomaly_score', 'failure_probability')",
             name="ck_prediction_type",
         ),
+        # GET /assets/{id}/predictions filtra por asset_id y ordena por
+        # predicted_at desc — índice compuesto cubre ambas partes de la query.
+        Index("ix_predictions_asset_predicted_at", "asset_id", "predicted_at"),
     )
 
     id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)

@@ -208,3 +208,21 @@ Este README (arquitectura, checklist por semana, resultados de modelo/sistema/pr
 **Pendiente de decisión del usuario, no de esta sesión:**
 - **Video demo (2-3 min):** requiere grabar pantalla, algo que esta sesión no puede hacer. Guion sugerido: (1) `docker compose up -d` levantando todo el stack, (2) registro de un tenant nuevo en el dashboard, (3) crear un activo e ingestar lecturas, (4) "Predecir riesgo de falla" → alerta apareciendo en vivo por WebSocket, (5) `GET /admin/models/.../versions` mostrando el historial en MLflow, (6) el dashboard de Grafana con métricas reales de la corrida de Locust.
 - **Deploy público:** bloqueado por lo mismo que el despliegue a AWS de la Semana 8 — necesita una decisión explícita sobre cuenta/credenciales/gasto en la nube.
+
+## Optimización y escalabilidad (post-plan)
+
+Pasada de revisión sobre lo ya construido, buscando específicamente qué se rompería al escalar — no features nuevas. Cada punto es un hallazgo real, no una mejora especulativa.
+
+**Bug real encontrado: reentrenamiento duplicado entre réplicas.** `infra/k8s/04-backend.yaml` corre 2 réplicas del backend, pero `BackgroundScheduler` (Semana 7) es un scheduler en memoria por proceso — sin coordinación, las dos réplicas reentrenarían por separado en cada tick. Fix: un advisory lock de Postgres (`pg_try_advisory_lock`) en `app/services/scheduler.py` — solo una réplica ejecuta el job en cada tick, sin sumar infraestructura nueva. Verificado con tests que mockean ambas ramas (lock adquirido / lock ocupado por otra réplica).
+
+**Bug real encontrado: las alertas por WebSocket no cruzaban entre réplicas.** El `ConnectionManager` (Semana 6) solo conocía las conexiones de SU PROPIO proceso — con 2 réplicas, un cliente conectado a la réplica B nunca se enteraba de una alerta creada por la réplica A. Fix: Postgres LISTEN/NOTIFY (`app/services/ws_manager.py::PostgresListener`) — cada réplica escucha el mismo canal y reenvía a sus propios clientes locales; la que crea la alerta también se entera por la misma vía (ya no hay entrega "directa" en Postgres). **Verificado de verdad, no solo con mocks:** un listener externo (simulando una segunda réplica) recibió la notificación disparada por una predicción real contra el backend corriendo en Docker.
+
+**Índices faltantes en las consultas que sí importan.** `alerts` y `predictions` no tenían índices más allá de la PK — pero *toda* consulta multi-tenant filtra por `tenant_id`/`asset_id`. Añadidos `ix_alerts_tenant_resolved`, `ix_alerts_asset_id`, `ix_predictions_asset_predicted_at` (migración `2da84ca336c5`), confirmados en el Postgres real vía `\di`.
+
+**Paginación ausente en `/assets` y `/alerts`.** Ambos devolvían la tabla completa del tenant sin límite. Añadido `limit`/`offset` (default 100, tope 500) — no rompe al frontend actual (no manda esos params, usa el default) pero acota el peor caso a medida que crecen los datos.
+
+**Frontend: bundle de 713KB en un solo chunk → dividido por ruta.** `AssetDetailPage` (con `recharts`, la dependencia más pesada) ahora es un `React.lazy` — solo se descarga cuando el usuario entra al detalle de un activo, no en la carga inicial de `/login`. `LoginPage`/`RegisterPage` quedaron en 2-3KB cada una.
+
+**Frontend: un token vencido fallaba en silencio.** `RequireAuth` solo comprobaba que hubiera *algún* token, no que fuera válido — con uno vencido o de un `JWT_SECRET_KEY` distinto, la UI mostraba listas vacías sin explicación (lo noté probando a mano en la Semana 6). Fix: interceptor de respuesta en `lib/api.ts` que, ante un 401 en una petición autenticada, limpia el token y redirige a `/login`. Verificado corrompiendo el token a mano y confirmando la redirección.
+
+**Corrección de dependencias:** `psycopg2-binary` lo usa el backend directamente (driver de Postgres) pero solo estaba declarado en el grupo `ml` de `pyproject.toml` — funcionaba porque ambos grupos se instalan juntos hoy, pero era información incorrecta.

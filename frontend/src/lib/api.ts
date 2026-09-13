@@ -12,3 +12,21 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+// Un 401 en una petición que SÍ llevaba token significa que expiró o quedó
+// inválido (ej. el backend se reinició con otro JWT_SECRET_KEY) — sin esto,
+// la UI se queda mostrando listas vacías en silencio en vez de pedir login
+// de nuevo (encontrado probando el dashboard manualmente, Semana 6).
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const hadToken = Boolean(error.config?.headers?.Authorization)
+    if (error.response?.status === 401 && hadToken) {
+      localStorage.removeItem("access_token")
+      if (window.location.pathname !== "/login") {
+        window.location.href = "/login"
+      }
+    }
+    return Promise.reject(error)
+  },
+)

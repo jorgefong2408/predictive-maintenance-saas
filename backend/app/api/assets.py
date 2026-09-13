@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import Claims, get_current_claims
@@ -10,12 +10,19 @@ router = APIRouter(prefix="/assets", tags=["assets"])
 
 
 @router.get("", response_model=list[AssetOut])
-def list_assets(claims: Claims = Depends(get_current_claims), db: Session = Depends(get_db)) -> list[Asset]:
+def list_assets(
+    limit: int = Query(default=100, le=500),
+    offset: int = Query(default=0, ge=0),
+    claims: Claims = Depends(get_current_claims),
+    db: Session = Depends(get_db),
+) -> list[Asset]:
     """UC3/UC4: solo devuelve activos del tenant del token, nunca de otro."""
     return (
         db.query(Asset)
         .filter(Asset.tenant_id == claims.tenant_id)
         .order_by(Asset.status.desc(), Asset.name)
+        .offset(offset)
+        .limit(limit)
         .all()
     )
 

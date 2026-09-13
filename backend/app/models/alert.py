@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import CheckConstraint, ForeignKey, String
+from sqlalchemy import CheckConstraint, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -11,6 +11,11 @@ class Alert(Base):
     __tablename__ = "alerts"
     __table_args__ = (
         CheckConstraint("severity IN ('info', 'warning', 'critical')", name="ck_alert_severity"),
+        # GET /alerts filtra siempre por tenant_id (+ resolved_at IS NULL en
+        # el caso default active_only=true) — sin este índice, esa consulta
+        # hace sequential scan sobre toda la tabla a medida que crece.
+        Index("ix_alerts_tenant_resolved", "tenant_id", "resolved_at"),
+        Index("ix_alerts_asset_id", "asset_id"),
     )
 
     id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)

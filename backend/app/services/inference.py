@@ -112,7 +112,7 @@ def predict_failure_probability(db: Session, asset: Asset) -> tuple[float, str]:
     missing = [s for s in AI4I_SENSOR_FEATURES if s not in latest]
     if missing:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"Faltan lecturas recientes de: {', '.join(missing)}",
         )
 

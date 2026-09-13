@@ -9,7 +9,7 @@ from app.models.prediction import Prediction
 from app.schemas.alert import AlertOut
 from app.schemas.prediction import PredictionOut, PredictionRequest
 from app.services import inference
-from app.services.ws_manager import manager
+from app.services.ws_manager import manager, notify_alert
 
 router = APIRouter(prefix="/assets/{asset_id}/predictions", tags=["predictions"])
 
@@ -41,9 +41,15 @@ def _maybe_create_alert(db: Session, asset: Asset, tenant_id: str, prediction: P
     db.commit()
     db.refresh(alert)
 
-    manager.broadcast_threadsafe(
-        tenant_id, {"type": "alert", "alert": AlertOut.model_validate(alert).model_dump(mode="json")}
-    )
+    ws_message = {"type": "alert", "alert": AlertOut.model_validate(alert).model_dump(mode="json")}
+    if db.bind.dialect.name == "postgresql":
+        # Multi-réplica (infra/k8s/04-backend.yaml): publica para que TODAS
+        # las réplicas lo entreguen a sus propios clientes, incluida esta.
+        notify_alert(db, tenant_id, ws_message)
+        db.commit()
+    else:
+        # SQLite (dev local sin Docker): un solo proceso, entrega directa.
+        manager.broadcast_threadsafe(tenant_id, ws_message)
 
 
 def _get_owned_asset(asset_id: str, tenant_id: str, db: Session) -> Asset:
