@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 import app.models  # noqa: F401  (registra los modelos en Base.metadata)
 from app.api import admin, alerts, assets, auth, predictions, readings, ws
@@ -43,6 +44,11 @@ app.include_router(predictions.router)
 app.include_router(alerts.router)
 app.include_router(admin.router)
 app.include_router(ws.router)
+
+# Semana 9: métricas de sistema (latencia, throughput, tasa de error por
+# endpoint) en /metrics, formato Prometheus. Ver docker-compose.yml (prometheus
+# scrapea este endpoint) e infra/observability/grafana para el dashboard.
+Instrumentator().instrument(app).expose(app)
 
 
 @app.get("/health")

@@ -13,7 +13,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semana 6 — Frontend (React + Vite + TS + Tailwind, alertas en tiempo real por WebSocket)
 - [x] Semana 7 — MLOps (drift con Evidently AI, reentrenamiento con promoción "champion", scheduler) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [x] Semana 8 — Infraestructura (Docker, docker-compose con Postgres+TimescaleDB y MLflow reales, K8s, CI/CD) — despliegue a AWS pendiente de decisión del usuario, ver abajo
-- [ ] Semana 9 — Observabilidad y pruebas
+- [x] Semana 9 — Observabilidad (Prometheus+Grafana, Loki), prueba de carga con Locust, test e2e — ver [`load-testing/RESULTS.md`](load-testing/RESULTS.md)
 - [ ] Semana 10 — Documentación y pulido
 
 ## Datasets
@@ -125,6 +125,25 @@ Dos problemas reales que aparecieron al levantar esto por primera vez (documenta
 
 - `.github/workflows/ci.yml`: lint + test (backend y frontend) en cada push/PR; build y push de imágenes a `ghcr.io` en `main`. El job de deploy a AWS existe como plantilla pero queda deshabilitado (`if: false`) — necesita credenciales de una cuenta real.
 - `infra/k8s/`: manifiestos planos (Postgres, MLflow, backend, frontend, Ingress) con la misma topología que `docker-compose.yml`. **Escritos pero no aplicados contra ningún cluster** — ver [`infra/k8s/README.md`](infra/k8s/README.md) para los pasos pendientes y por qué.
+
+## Semana 9 — Observabilidad y pruebas
+
+Con `docker compose up -d` (Semana 8) también levantan:
+
+- **Prometheus** (`:9090`) — scrapea `/metrics` del backend (vía `prometheus-fastapi-instrumentator`: latencia, throughput y tasa de error por endpoint).
+- **Grafana** (`:3001`, sin login — anónimo habilitado solo para esta demo local) — dashboard "PredictMaint API - Overview" pre-provisto, datasources de Prometheus y Loki ya configurados.
+- **Loki + Promtail** — logs centralizados de **todos** los contenedores del stack, leídos directamente del socket de Docker (sin instrumentar cada servicio); consultables desde Grafana → Explore → datasource Loki.
+
+Prueba de carga con Locust sobre `POST /assets/{id}/predictions` (el endpoint de inferencia, no el CRUD alrededor):
+
+```bash
+uv run python -m locust -f load-testing/locustfile.py --host http://localhost:8000 \
+  --headless -u 20 -r 5 -t 45s --csv load-testing/results
+```
+
+Encontró y corrigió un cuello de botella real (el servicio de inferencia resolvía la versión del modelo contra MLflow por red en cada request) y descartó dos hipótesis más sobre una cola de latencia p99 que persiste sin causa confirmada — ver el detalle completo, con números de antes/después, en [`load-testing/RESULTS.md`](load-testing/RESULTS.md).
+
+Test end-to-end del flujo completo (`backend/tests/test_e2e_flow.py`): UC3 (alta de tenant) → UC4 (alta de activo) → UC1 (ingesta → predicción real vía MLflow → alerta automática → reconocimiento) → UC6 (trazabilidad), todo en una sola corrida — se suma a los tests unitarios/de integración existentes (`uv run pytest backend/tests -v`).
 
 ### Por qué no hay despliegue real a AWS
 

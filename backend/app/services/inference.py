@@ -11,6 +11,7 @@ ver docs/MODEL_RESULTS.md).
 
 from __future__ import annotations
 
+import time
 from functools import lru_cache
 
 import mlflow
@@ -42,22 +43,45 @@ AI4I_SENSOR_FEATURES = [
 ]
 
 
+ALIAS_CACHE_TTL_SECONDS = 30
+_alias_cache: dict[str, tuple[str, float]] = {}
+
+
 @lru_cache
 def _load_model_version(version: str):
-    return mlflow.xgboost.load_model(f"models:/{AI4I_MODEL_NAME}/{version}")
+    model = mlflow.xgboost.load_model(f"models:/{AI4I_MODEL_NAME}/{version}")
+    # XGBoost por defecto usa todos los cores por predicción (n_jobs=-1); para
+    # una fila a la vez eso no acelera nada y bajo concurrencia real cada
+    # request compite por todos los cores. Buena práctica de todos modos,
+    # aunque en la prueba de carga (load-testing/RESULTS.md) NO resultó ser
+    # la causa de la cola p99 — esa sigue sin explicación confirmada.
+    model.set_params(n_jobs=1)
+    return model
 
 
-def _current_ai4i_model() -> tuple[object, str]:
-    """Resuelve el alias 'champion' a una versión concreta en cada llamada
-    (barato: consulta al registry, no descarga el modelo) y solo carga un
-    modelo nuevo si la versión resuelta no está ya en caché. Así, cuando
-    ml/pipelines/retrain.py mueve el alias, la próxima predicción sirve el
-    modelo nuevo sin reiniciar el proceso (UC5: "sin downtime")."""
+def _resolve_champion_version() -> str:
+    """Resolver el alias contra MLflow es una llamada de red — hacerlo en
+    cada predicción resultó ser el cuello de botella real bajo carga (Semana
+    9: p99 de ~7s con Locust, ver load-testing/RESULTS.md). Se cachea la
+    versión resuelta por ALIAS_CACHE_TTL_SECONDS: sigue habiendo recarga sin
+    downtime tras un reentrenamiento (UC5), solo que con hasta 30s de
+    staleness en vez de resolverlo en cada request."""
+    cached = _alias_cache.get(AI4I_MODEL_ALIAS)
+    now = time.monotonic()
+    if cached is not None and now - cached[1] < ALIAS_CACHE_TTL_SECONDS:
+        return cached[0]
+
     client = MlflowClient()
     try:
         version = client.get_model_version_by_alias(AI4I_MODEL_NAME, AI4I_MODEL_ALIAS).version
     except MlflowException:
         version = AI4I_FALLBACK_VERSION
+    _alias_cache[AI4I_MODEL_ALIAS] = (version, now)
+    return version
+
+
+def _current_ai4i_model() -> tuple[object, str]:
+    version = _resolve_champion_version()
     return _load_model_version(version), version
 
 

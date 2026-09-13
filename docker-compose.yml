@@ -69,7 +69,51 @@ services:
     depends_on:
       - backend
 
+  # Semana 9: observabilidad. Métricas del backend en /metrics (formato
+  # Prometheus, vía prometheus-fastapi-instrumentator).
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    volumes:
+      - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - backend
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./infra/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/observability/grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+      - loki
+
+  # Logs centralizados: promtail lee los logs de TODOS los contenedores vía
+  # el socket de Docker (sin instrumentar cada servicio) y los empuja a Loki;
+  # se consultan desde el mismo Grafana (datasource "Loki").
+  loki:
+    image: grafana/loki:3.3.2
+    ports:
+      - "3100:3100"
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    volumes:
+      - ./infra/observability/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
 volumes:
   postgres_data:
   mlflow_data:
   mlflow_artifacts:
+  grafana_data:

@@ -37,6 +37,10 @@ ml/evaluation/drift_report.html
 *.db
 *.db-journal
 
+# Locust: salida cruda de cada corrida, no versionar (los números relevantes
+# quedan resumidos a mano en load-testing/RESULTS.md)
+load-testing/results*.csv
+
 # Logs
 *.log
 

@@ -22,7 +22,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Lint (ruff)
-        run: uv run ruff check backend ml
+        run: uv run ruff check backend ml load-testing
 
       - name: Test (pytest)
         run: uv run pytest backend/tests -v
