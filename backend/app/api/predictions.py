@@ -6,8 +6,10 @@ from app.core.database import get_db
 from app.models.alert import Alert
 from app.models.asset import Asset
 from app.models.prediction import Prediction
+from app.schemas.alert import AlertOut
 from app.schemas.prediction import PredictionOut, PredictionRequest
 from app.services import inference
+from app.services.ws_manager import manager
 
 router = APIRouter(prefix="/assets/{asset_id}/predictions", tags=["predictions"])
 
@@ -33,6 +35,11 @@ def _maybe_create_alert(db: Session, asset: Asset, tenant_id: str, prediction: P
     db.add(alert)
     asset.status = severity
     db.commit()
+    db.refresh(alert)
+
+    manager.broadcast_threadsafe(
+        tenant_id, {"type": "alert", "alert": AlertOut.model_validate(alert).model_dump(mode="json")}
+    )
 
 
 def _get_owned_asset(asset_id: str, tenant_id: str, db: Session) -> Asset:

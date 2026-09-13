@@ -2685,6 +2685,7 @@ backend = [
     { name = "python-jose", extra = ["cryptography"] },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 dev = [
     { name = "httpx" },
@@ -2717,6 +2718,7 @@ backend = [
     { name = "python-jose", extras = ["cryptography"], specifier = ">=3.5.0" },
     { name = "python-multipart", specifier = ">=0.0.32" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.52.4" },
+    { name = "websockets", specifier = ">=17.1" },
 ]
 dev = [
     { name = "httpx", specifier = ">=0.28.1" },

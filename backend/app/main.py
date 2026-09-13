@@ -1,12 +1,14 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401  (registra los modelos en Base.metadata)
-from app.api import alerts, assets, auth, predictions, readings
+from app.api import alerts, assets, auth, predictions, readings, ws
 from app.core.config import get_settings
 from app.core.database import Base, engine
+from app.services.ws_manager import manager
 
 settings = get_settings()
 
@@ -17,6 +19,7 @@ async def lifespan(app: FastAPI):
         # Desarrollo local sin Docker (ver README): crea el esquema directo.
         # En Postgres, las migraciones de Alembic (backend/alembic/) son la fuente de verdad.
         Base.metadata.create_all(bind=engine)
+    manager.bind_loop(asyncio.get_running_loop())
     yield
 
 
@@ -35,6 +38,7 @@ app.include_router(assets.router)
 app.include_router(readings.router)
 app.include_router(predictions.router)
 app.include_router(alerts.router)
+app.include_router(ws.router)
 
 
 @app.get("/health")
