@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: frontend
-          image: ghcr.io/OWNER/REPO/frontend:latest
+          image: ghcr.io/jorgefong2408/predictive-maintenance-saas/frontend:latest
           ports: [{ containerPort: 80 }]
           readinessProbe:
             httpGet: { path: /, port: 80 }

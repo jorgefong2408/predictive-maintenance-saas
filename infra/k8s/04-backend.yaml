@@ -1,5 +1,4 @@
-# image: reemplazar por el que publica .github/workflows/ci.yml
-# (ghcr.io/<owner>/<repo>/backend:latest) una vez el repo esté en GitHub.
+# image: la que publica .github/workflows/ci.yml en cada push a main.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -15,7 +14,7 @@ spec:
     spec:
       initContainers:
         - name: migrate
-          image: ghcr.io/OWNER/REPO/backend:latest
+          image: ghcr.io/jorgefong2408/predictive-maintenance-saas/backend:latest
           command: ["alembic", "upgrade", "head"]
           envFrom: [{ configMapRef: { name: backend-config } }]
           env:
@@ -25,7 +24,7 @@ spec:
               valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: POSTGRES_PASSWORD } }
       containers:
         - name: backend
-          image: ghcr.io/OWNER/REPO/backend:latest
+          image: ghcr.io/jorgefong2408/predictive-maintenance-saas/backend:latest
           ports: [{ containerPort: 8000 }]
           envFrom: [{ configMapRef: { name: backend-config } }]
           env:

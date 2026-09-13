@@ -1,5 +1,7 @@
 # Predictive Maintenance SaaS
 
+[![CI](https://github.com/jorgefong2408/predictive-maintenance-saas/actions/workflows/ci.yml/badge.svg)](https://github.com/jorgefong2408/predictive-maintenance-saas/actions/workflows/ci.yml)
+
 Plataforma multi-tenant de mantenimiento predictivo: ingiere datos de sensores, detecta anomalías, predice la vida útil remanente (RUL) de activos industriales y presenta todo en un dashboard en tiempo real con alertas.
 
 Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ejecutado fase por fase (Semana 0 a Semana 10). Cada decisión de arquitectura no obvia tiene su porqué documentado en el propio código o en `docs/` — no es una lista de tecnologías, es un sistema que se puede levantar y probar de punta a punta hoy mismo con `docker compose up`.
