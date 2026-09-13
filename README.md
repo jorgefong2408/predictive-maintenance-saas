@@ -11,7 +11,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semanas 3-4 — Modelado ML (baseline, Isolation Forest, XGBoost clasificación + RUL, MLflow) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [x] Semana 5 — Backend / API (FastAPI, JWT multi-tenant, servicio de inferencia, Alembic, pytest)
 - [x] Semana 6 — Frontend (React + Vite + TS + Tailwind, alertas en tiempo real por WebSocket)
-- [ ] Semana 7 — MLOps
+- [x] Semana 7 — MLOps (drift con Evidently AI, reentrenamiento con promoción "champion", scheduler) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [ ] Semana 8 — Infraestructura y despliegue
 - [ ] Semana 9 — Observabilidad y pruebas
 - [ ] Semana 10 — Documentación y pulido
@@ -85,3 +85,12 @@ npm run dev          # http://localhost:5173 — espera el backend en :8000 (VIT
 ```
 
 Flujo de demo: `/register` (crea tenant + admin, UC3) → `/assets` (crear activo) → ingestar lecturas vía la API (`POST /assets/{id}/readings`, lo hace `ml/pipelines/simulate_realtime.py` en un flujo real) → abrir el activo → "Predecir riesgo de falla" dispara la inferencia real (MLflow) y, si el riesgo es alto, la alerta aparece en la campana **sin recargar la página** (WebSocket).
+
+### MLOps (drift + reentrenamiento)
+
+```bash
+uv run python ml/pipelines/detect_drift.py     # ml/evaluation/drift_report.html + drift_summary.json
+uv run python ml/pipelines/retrain.py          # nueva versión; promueve el alias "champion" solo si mejora el F1
+```
+
+El backend expone lo mismo por API (rol admin): `POST /admin/models/ai4i-failure-classifier/retrain` y `GET /admin/models/ai4i-failure-classifier/versions`. Un `BackgroundScheduler` interno corre el reentrenamiento cada `RETRAIN_INTERVAL_HOURS` (default 24h, ver `.env.example`) — sustituto de Celery beat mientras no hay Docker/Redis (Semana 8).

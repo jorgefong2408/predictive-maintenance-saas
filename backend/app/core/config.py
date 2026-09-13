@@ -21,7 +21,10 @@ class Settings(BaseSettings):
     # Rutas absolutas: la API puede arrancar desde cualquier cwd y debe
     # encontrar el mismo registro de modelos que usan los pipelines de ml/.
     mlflow_tracking_uri: str = f"sqlite:///{PROJECT_ROOT / 'ml' / 'mlflow.db'}"
-    ai4i_model_uri: str = "models:/ai4i-failure-classifier/1"
+
+    # Semana 7: job programado de reentrenamiento (ver app/services/scheduler.py)
+    enable_scheduler: bool = True
+    retrain_interval_hours: int = 24
 
     cors_origins: list[str] = ["http://localhost:5173"]
 

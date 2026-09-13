@@ -28,6 +28,7 @@ ml/data/processed/*
 mlruns/
 mlartifacts/
 ml/mlflow.db
+ml/evaluation/drift_report.html
 *.pkl
 *.pt
 *.joblib

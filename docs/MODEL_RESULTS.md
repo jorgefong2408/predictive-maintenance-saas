@@ -42,5 +42,13 @@ Para C-MAPSS FD001, 4 de 21 sensores (`sensor_1`, `sensor_5`, `sensor_10`, `sens
 ## Próximos pasos (fuera de alcance de Semana 3-4)
 
 - Servir estos modelos vía el servicio de inferencia del backend (Semana 5), cargándolos desde el MLflow Model Registry por nombre + versión (`predictions.model_name` / `model_version` en `docs/DATA_SCHEMA.md`).
-- Monitoreo de drift con Evidently AI y reentrenamiento automático (Semana 7).
+- Monitoreo de drift con Evidently AI y reentrenamiento automático (Semana 7) — ver abajo.
 - Opcional: LSTM sobre C-MAPSS con ventanas deslizantes para bajar el RMSE de RUL.
+
+## MLOps (Semana 7): drift, reentrenamiento y versionado
+
+**Drift** (`ml/pipelines/detect_drift.py`, reporte en `ml/evaluation/drift_summary.json`): compara los 5 sensores de AI4I entre la primera y segunda mitad del dataset. Como todavía no hay tráfico productivo acumulado, la "ventana actual" incluye un corrimiento sintético (`torque += 6`, `tool_wear *= 1.15`) para poder demostrar la mecánica de detección con una señal real y conocida — no es drift real de producción. Evidently eligió *Wasserstein distance (normed)* como método (no K-S) por el tamaño de muestra; el drift se marca cuando la distancia supera el umbral 0.1, dirección opuesta a un p-value. Resultado: 4/5 columnas marcadas, incluyendo `torque` (el corrimiento inyectado) — ver `ml/pipelines/detect_drift.py` para el detalle de por qué la dirección del umbral depende del método.
+
+**Reentrenamiento con promoción condicional** (`ml/pipelines/retrain.py`, patrón "champion" vía alias de MLflow): cada corrida registra una versión nueva, pero solo mueve el alias `champion` — el que sirve `backend/app/services/inference.py` — si el F1 nuevo supera al del champion actual. Un reentrenamiento nunca degrada el modelo en producción en silencio. El backend expone esto como `POST /admin/models/ai4i-failure-classifier/retrain` (dispara manualmente) y `GET /admin/models/{name}/versions` (historial completo con métricas), y un `BackgroundScheduler` (`backend/app/services/scheduler.py`) lo corre cada `RETRAIN_INTERVAL_HOURS` (default 24h) — sustituto documentado de Celery beat mientras no hay Docker/Redis en este entorno (ver README).
+
+Como el dataset de AI4I es estático, "reentrenar" hoy repite el mismo proceso sobre los mismos datos (F1 idéntico, por eso normalmente no promueve). La mecánica de versionado/promoción es la pieza real y reusable; conectarla a datos frescos de `sensor_readings` es un paso de ingeniería de features fuera de alcance de esta fase.

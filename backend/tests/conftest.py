@@ -12,6 +12,7 @@ _tmp_db_fd, _tmp_db_path = tempfile.mkstemp(suffix=".db")
 os.close(_tmp_db_fd)
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db_path}"
 os.environ["JWT_SECRET_KEY"] = "test-secret"
+os.environ["ENABLE_SCHEDULER"] = "false"  # evita levantar el job programado en cada test
 
 from fastapi.testclient import TestClient  # noqa: E402
 

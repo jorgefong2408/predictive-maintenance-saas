@@ -1,0 +1,38 @@
+{
+  "dataset": {
+    "drifted_columns": 4.0,
+    "drifted_share": 0.8
+  },
+  "columns": {
+    "air_temperature": {
+      "method": "Wasserstein distance (normed)",
+      "value": 0.27902304177612947,
+      "threshold": 0.1,
+      "drifted": true
+    },
+    "process_temperature": {
+      "method": "Wasserstein distance (normed)",
+      "value": 0.7493557383299855,
+      "threshold": 0.1,
+      "drifted": true
+    },
+    "rotational_speed": {
+      "method": "Wasserstein distance (normed)",
+      "value": 0.03074954384685846,
+      "threshold": 0.1,
+      "drifted": false
+    },
+    "torque": {
+      "method": "Wasserstein distance (normed)",
+      "value": 0.6167520604311313,
+      "threshold": 0.1,
+      "drifted": true
+    },
+    "tool_wear": {
+      "method": "Wasserstein distance (normed)",
+      "value": 0.22202520190174452,
+      "threshold": 0.1,
+      "drifted": true
+    }
+  }
+}

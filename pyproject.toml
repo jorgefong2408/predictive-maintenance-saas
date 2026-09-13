@@ -7,6 +7,7 @@ dependencies = []
 
 [dependency-groups]
 ml = [
+    "evidently>=0.7.23",
     "jupyter>=1.1.1",
     "matplotlib>=3.11.2",
     "mlflow>=3.16.0",
@@ -22,6 +23,7 @@ ml = [
 ]
 backend = [
     "alembic>=1.20.0",
+    "apscheduler>=3.11.3",
     "bcrypt>=5.0.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
