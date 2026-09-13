@@ -7,7 +7,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 ## Estado actual
 
 - [x] Semana 0 — Diseño (dataset, esquema de datos, estructura de repo, casos de uso)
-- [ ] Semanas 1-2 — Pipeline de datos
+- [x] Semanas 1-2 — Pipeline de datos (ingesta, EDA, esquema TimescaleDB, simulador tiempo real)
 - [ ] Semanas 3-4 — Modelado ML
 - [ ] Semana 5 — Backend / API
 - [ ] Semana 6 — Frontend
@@ -41,4 +41,19 @@ Ver [`docs/PLAN.md#5-stack-tecnológico-por-capa`](docs/PLAN.md) para el detalle
 
 ## Cómo correr el proyecto (desarrollo local)
 
-_Se documentará al final de la Semana 1-2 una vez exista `docker-compose.yml` funcional._
+Gestión de dependencias con [`uv`](https://docs.astral.sh/uv/) (Python 3.12).
+
+```bash
+uv sync                                          # instala dependencias (grupo ml)
+uv run python ml/pipelines/ingest_ai4i.py        # descarga -> ml/data/raw/ai4i2020.csv ya incluida
+uv run jupyter notebook ml/notebooks/01_eda_ai4i2020.ipynb
+uv run python ml/pipelines/simulate_realtime.py --speed 60 --limit 100
+```
+
+Carga a Postgres/TimescaleDB (requiere `infra/sql/001_schema.sql` aplicado y `DATABASE_URL` configurado, ver `.env.example`):
+
+```bash
+uv run python ml/pipelines/load_to_postgres.py
+```
+
+`docker-compose.yml` con Postgres/TimescaleDB, backend, frontend y MLflow llega en la Semana 8 de `docs/PLAN.md`.

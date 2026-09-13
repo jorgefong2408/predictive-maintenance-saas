@@ -96,9 +96,12 @@ Cada fila es `(time, asset_id, sensor_name, value)` en vez de una columna por se
 **Trazabilidad de modelo:** `predictions.model_name` + `model_version` apuntan al MLflow Model Registry (fuente de verdad de artefactos y métricas); Postgres solo guarda la referencia, no el modelo.
 
 **Mapeo desde AI4I 2020** (`ml/data/raw/ai4i2020.csv`):
-- `Product ID` → `assets.external_ref`, `Type` (L/M/H) → `assets.metadata.quality_variant`
-- `Air temperature [K]`, `Process temperature [K]`, `Rotational speed [rpm]`, `Torque [Nm]`, `Tool wear [min]` → 5 filas en `sensor_readings` por `UDI` (usando un timestamp sintético secuencial como serie, ya que el dataset es tabular sin fecha real)
-- `Machine failure`, `TWF`, `HDF`, `PWF`, `OSF`, `RNF` → `failure_events.failure_type` cuando alguna bandera es 1
+
+AI4I 2020 es tabular: cada una de sus 10 000 filas tiene un `Product ID` único y no trae identificador de máquina real ni timestamps — es una snapshot, no una serie temporal por activo. Para poder ejercitar el modelo de datos orientado a series de tiempo (y que el dashboard muestre tendencias reales por máquina), la ingesta **agrupa filas consecutivas de `UDI` en un número fijo de activos sintéticos** (`N_ASSETS = 12`, ver `ml/pipelines/ingest_ai4i.py`), simulando una planta con 12 máquinas (`Mill-01` … `Mill-12`) cada una con ~833 lecturas secuenciales (1/minuto). Esta es una decisión explícita para la fase MVP; el modelo de series temporales "real" (sin necesidad de sintetizar agrupación) llega con C-MAPSS en la Semana 3-4.
+
+- Cada chunk de filas consecutivas → un `asset` (`Mill-XX`); `Type` (L/M/H) más frecuente del chunk → `assets.metadata.quality_variant`
+- `Air temperature [K]`, `Process temperature [K]`, `Rotational speed [rpm]`, `Torque [Nm]`, `Tool wear [min]` → 5 filas en `sensor_readings` por fila original, con timestamp secuencial dentro del activo asignado
+- `Machine failure`, `TWF`, `HDF`, `PWF`, `OSF`, `RNF` → `failure_events.failure_type` cuando alguna bandera es 1, con `occurred_at` = timestamp sintético de esa fila
 
 ## Índices previstos
 - `sensor_readings`: índice compuesto implícito por hypertable en `(asset_id, time DESC)`.

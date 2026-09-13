@@ -1,0 +1,22 @@
+[project]
+name = "predictive-maintenance-saas"
+version = "0.1.0"
+description = "Plataforma SaaS de mantenimiento predictivo (ingesta de sensores, detección de anomalías, predicción de RUL, dashboard multi-tenant)"
+requires-python = ">=3.12"
+dependencies = []
+
+[dependency-groups]
+ml = [
+    "jupyter>=1.1.1",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.3",
+    "pandas>=3.0.5",
+    "psycopg2-binary>=2.9.13",
+    "pyarrow>=25.0.1",
+    "python-dotenv>=1.2.3",
+    "scikit-learn>=1.9.1",
+    "seaborn>=0.13.2",
+    "sqlalchemy>=2.0.52",
+]
+backend = []
+dev = []
