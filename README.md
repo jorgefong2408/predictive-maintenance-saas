@@ -2,7 +2,39 @@
 
 Plataforma multi-tenant de mantenimiento predictivo: ingiere datos de sensores, detecta anomalías, predice la vida útil remanente (RUL) de activos industriales y presenta todo en un dashboard en tiempo real con alertas.
 
-Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ejecutado fase por fase (Semana 0 a Semana 10).
+Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ejecutado fase por fase (Semana 0 a Semana 10). Cada decisión de arquitectura no obvia tiene su porqué documentado en el propio código o en `docs/` — no es una lista de tecnologías, es un sistema que se puede levantar y probar de punta a punta hoy mismo con `docker compose up`.
+
+## Arquitectura
+
+```mermaid
+flowchart TB
+    Browser["Navegador<br/>(dashboard React)"]
+
+    subgraph compose["docker-compose"]
+        Frontend["frontend<br/>nginx + React SPA"]
+        Backend["backend<br/>FastAPI"]
+        Postgres[("postgres<br/>TimescaleDB<br/>hypertable de sensor_readings")]
+        MLflow["mlflow<br/>tracking + model registry"]
+        Prometheus["prometheus"]
+        Grafana["grafana"]
+        Loki["loki"]
+        Promtail["promtail<br/>lee logs de todos los contenedores"]
+        Scheduler["BackgroundScheduler<br/>(en el proceso del backend)"]
+    end
+
+    Browser -- "HTTPS" --> Frontend
+    Browser -- "WebSocket /ws/alerts" --> Backend
+    Frontend -- "fetch /auth /assets /alerts /admin" --> Backend
+    Backend -- "SQLAlchemy + Alembic" --> Postgres
+    Backend -- "carga modelo por alias champion" --> MLflow
+    Scheduler -- "reentrena + promueve si mejora F1" --> MLflow
+    Prometheus -- "scrape /metrics" --> Backend
+    Promtail --> Loki
+    Grafana --> Prometheus
+    Grafana --> Loki
+```
+
+Fuera del diagrama (corren aparte, no dentro de docker-compose): los pipelines de `ml/` (ingesta, EDA, entrenamiento, drift) se ejecutan bajo demanda con `uv run`, apuntando al mismo Postgres/MLflow cuando hace falta — no son servicios de larga duración.
 
 ## Estado actual
 
@@ -14,7 +46,25 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semana 7 — MLOps (drift con Evidently AI, reentrenamiento con promoción "champion", scheduler) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [x] Semana 8 — Infraestructura (Docker, docker-compose con Postgres+TimescaleDB y MLflow reales, K8s, CI/CD) — despliegue a AWS pendiente de decisión del usuario, ver abajo
 - [x] Semana 9 — Observabilidad (Prometheus+Grafana, Loki), prueba de carga con Locust, test e2e — ver [`load-testing/RESULTS.md`](load-testing/RESULTS.md)
-- [ ] Semana 10 — Documentación y pulido
+- [x] Semana 10 — Documentación y pulido — video demo y deploy público pendientes de decisión del usuario, ver abajo
+
+## Resultados
+
+**Modelo** — comparado siempre contra un baseline explícito, no contra "nada" (detalle completo en [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)):
+
+| | Baseline | Modelo final | Mejora |
+|---|---|---|---|
+| Clasificación de falla (AI4I 2020) — F1 | 0.000 (DummyClassifier) | **0.603** (XGBoost, ROC-AUC 0.975) | — |
+| RUL (NASA C-MAPSS FD001) — RMSE | 20.75 ciclos (regresión lineal) | **17.06 ciclos** (XGBoost) | -28% error |
+
+**Sistema** — bajo carga real con Locust, no solo "funciona en mi máquina" (detalle en [`load-testing/RESULTS.md`](load-testing/RESULTS.md)):
+
+| | Antes | Después |
+|---|---|---|
+| Latencia mediana, endpoint de inferencia | 120 ms | **69 ms** |
+| Throughput sostenido (20 usuarios concurrentes) | ~20 req/s, 0 fallos | ~21 req/s, 0 fallos |
+
+**Producto** — UC1 completo, de punta a punta, en el navegador real: ingesta de lecturas → predicción de riesgo de falla (84.7%) vía el modelo real registrado en MLflow → estado del activo pasa a CRÍTICO → alerta aparece en la campana **sin recargar la página** (WebSocket) → se puede reconocer. Multi-tenancy (UC3) verificado: un segundo tenant recibe 404 al intentar ver el activo del primero.
 
 ## Datasets
 
@@ -148,3 +198,11 @@ Test end-to-end del flujo completo (`backend/tests/test_e2e_flow.py`): UC3 (alta
 ### Por qué no hay despliegue real a AWS
 
 Requiere una cuenta de AWS del usuario, sus credenciales, y autorización explícita para el gasto que eso implica (EKS/ECS, Load Balancer, etc.) — no es algo que esta sesión deba decidir por su cuenta. Además, esta máquina ya tiene `kubectl` configurado contra un cluster EKS real de otro proyecto (`recomendaciones-cluster`); no se ejecutó ningún comando contra él.
+
+## Semana 10 — Documentación y pulido
+
+Este README (arquitectura, checklist por semana, resultados de modelo/sistema/producto), `docs/` (plan, esquema de datos, casos de uso, resultados de modelo detallados), `load-testing/RESULTS.md` y `infra/k8s/README.md` son la documentación final — no un documento aparte, para que no se desactualice del código. Licencia MIT (`LICENSE`) para dejar claro que el código es reusable como referencia de portafolio.
+
+**Pendiente de decisión del usuario, no de esta sesión:**
+- **Video demo (2-3 min):** requiere grabar pantalla, algo que esta sesión no puede hacer. Guion sugerido: (1) `docker compose up -d` levantando todo el stack, (2) registro de un tenant nuevo en el dashboard, (3) crear un activo e ingestar lecturas, (4) "Predecir riesgo de falla" → alerta apareciendo en vivo por WebSocket, (5) `GET /admin/models/.../versions` mostrando el historial en MLflow, (6) el dashboard de Grafana con métricas reales de la corrida de Locust.
+- **Deploy público:** bloqueado por lo mismo que el despliegue a AWS de la Semana 8 — necesita una decisión explícita sobre cuenta/credenciales/gasto en la nube.
