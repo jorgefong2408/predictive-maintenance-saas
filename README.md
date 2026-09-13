@@ -10,7 +10,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semanas 1-2 — Pipeline de datos (ingesta, EDA, esquema TimescaleDB, simulador tiempo real)
 - [x] Semanas 3-4 — Modelado ML (baseline, Isolation Forest, XGBoost clasificación + RUL, MLflow) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
 - [x] Semana 5 — Backend / API (FastAPI, JWT multi-tenant, servicio de inferencia, Alembic, pytest)
-- [ ] Semana 6 — Frontend
+- [x] Semana 6 — Frontend (React + Vite + TS + Tailwind, alertas en tiempo real por WebSocket)
 - [ ] Semana 7 — MLOps
 - [ ] Semana 8 — Infraestructura y despliegue
 - [ ] Semana 9 — Observabilidad y pruebas
@@ -75,3 +75,13 @@ Tests (usan un SQLite temporal aislado, no tocan `predictmaint.db`; los de `/pre
 ```bash
 uv run pytest backend/tests -v
 ```
+
+### Frontend (dashboard)
+
+```bash
+cd frontend
+npm install
+npm run dev          # http://localhost:5173 — espera el backend en :8000 (VITE_API_URL, ver .env.example)
+```
+
+Flujo de demo: `/register` (crea tenant + admin, UC3) → `/assets` (crear activo) → ingestar lecturas vía la API (`POST /assets/{id}/readings`, lo hace `ml/pipelines/simulate_realtime.py` en un flujo real) → abrir el activo → "Predecir riesgo de falla" dispara la inferencia real (MLflow) y, si el riesgo es alto, la alerta aparece en la campana **sin recargar la página** (WebSocket).
