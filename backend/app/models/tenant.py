@@ -1,0 +1,20 @@
+from datetime import datetime, timezone
+
+from sqlalchemy import String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from app.core.database import Base
+from app.models.types import GUID, new_uuid
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    slug: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    plan: Mapped[str] = mapped_column(String, nullable=False, default="free")
+    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(timezone.utc))
+
+    users: Mapped[list["User"]] = relationship(back_populates="tenant")
+    assets: Mapped[list["Asset"]] = relationship(back_populates="tenant")

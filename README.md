@@ -9,7 +9,7 @@ Este repositorio sigue el plan documentado en [`docs/PLAN.md`](docs/PLAN.md), ej
 - [x] Semana 0 — Diseño (dataset, esquema de datos, estructura de repo, casos de uso)
 - [x] Semanas 1-2 — Pipeline de datos (ingesta, EDA, esquema TimescaleDB, simulador tiempo real)
 - [x] Semanas 3-4 — Modelado ML (baseline, Isolation Forest, XGBoost clasificación + RUL, MLflow) — ver [`docs/MODEL_RESULTS.md`](docs/MODEL_RESULTS.md)
-- [ ] Semana 5 — Backend / API
+- [x] Semana 5 — Backend / API (FastAPI, JWT multi-tenant, servicio de inferencia, Alembic, pytest)
 - [ ] Semana 6 — Frontend
 - [ ] Semana 7 — MLOps
 - [ ] Semana 8 — Infraestructura y despliegue
@@ -57,3 +57,21 @@ uv run python ml/pipelines/load_to_postgres.py
 ```
 
 `docker-compose.yml` con Postgres/TimescaleDB, backend, frontend y MLflow llega en la Semana 8 de `docs/PLAN.md`.
+
+### Backend (API)
+
+Sin Docker por ahora: corre sobre SQLite local (`backend/predictmaint.db`, ignorado por git). `DATABASE_URL` en `.env` apunta a Postgres+TimescaleDB cuando exista (Semana 8) — el código no cambia.
+
+```bash
+cd backend
+uv run --project .. alembic upgrade head        # crea/actualiza el esquema (backend/alembic/)
+uv run --project .. uvicorn app.main:app --reload --port 8000
+```
+
+Docs interactivos en `http://localhost:8000/docs`. Flujo mínimo: `POST /auth/register` (crea tenant + admin) → `POST /assets` → `POST /assets/{id}/readings` (5 sensores AI4I) → `POST /assets/{id}/predictions` (`failure_probability`, carga el modelo desde el Model Registry de MLflow y dispara una alerta si el riesgo es alto).
+
+Tests (usan un SQLite temporal aislado, no tocan `predictmaint.db`; los de `/predictions` requieren haber corrido `train_ai4i_models.py` al menos una vez):
+
+```bash
+uv run pytest backend/tests -v
+```

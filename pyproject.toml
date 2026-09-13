@@ -20,5 +20,20 @@ ml = [
     "sqlalchemy>=2.0.52",
     "xgboost>=3.4.1",
 ]
-backend = []
-dev = []
+backend = [
+    "alembic>=1.20.0",
+    "bcrypt>=5.0.0",
+    "email-validator>=2.3.0",
+    "fastapi>=0.141.1",
+    "pydantic-settings>=2.15.0",
+    "python-jose[cryptography]>=3.5.0",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.52.4",
+]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+]
+
+[tool.uv]
+default-groups = ["ml", "backend", "dev"]

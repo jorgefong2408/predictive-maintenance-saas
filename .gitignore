@@ -32,6 +32,10 @@ ml/mlflow.db
 *.pt
 *.joblib
 
+# SQLite (desarrollo local sin Docker, ver README)
+*.db
+*.db-journal
+
 # Logs
 *.log
 
