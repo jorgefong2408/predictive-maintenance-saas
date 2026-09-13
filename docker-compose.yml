@@ -43,9 +43,18 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     command: >
-      sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+      sh -c "python scripts/migrate_with_lock.py && uvicorn app.main:app --host 0.0.0.0 --port 8000"
     environment:
-      DATABASE_URL: postgresql+psycopg2://predictmaint:predictmaint@postgres:5432/predictmaint
+      # Rol restringido (sin superusuario, sin BYPASSRLS) — el que de verdad
+      # queda sujeto a Row-Level Security. Lo crea la migración 52dbcb3527ef
+      # la primera vez que corre MIGRATION_DATABASE_URL (el rol admin).
+      DATABASE_URL: postgresql+psycopg2://predictmaint_app:${APP_DB_PASSWORD:-predictmaint_app_insecure_default}@postgres:5432/predictmaint
+      # Rol admin (el POSTGRES_USER del contenedor postgres, superusuario) —
+      # solo para DDL de migraciones (ver backend/alembic/env.py). NUNCA usar
+      # esta URL para servir requests: un superusuario de Postgres salta RLS
+      # sin excepción, con o sin FORCE ROW LEVEL SECURITY.
+      MIGRATION_DATABASE_URL: postgresql+psycopg2://predictmaint:predictmaint@postgres:5432/predictmaint
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-predictmaint_app_insecure_default}
       MLFLOW_TRACKING_URI: http://mlflow:5000
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
       CORS_ORIGINS: '["http://localhost:5173"]'

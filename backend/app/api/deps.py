@@ -1,7 +1,9 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.core.database import get_db
 from app.core.security import InvalidTokenError, decode_access_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -33,6 +35,41 @@ def require_role(*allowed_roles: str):
         return claims
 
     return _check
+
+
+def get_tenant_scoped_db(
+    claims: Claims = Depends(get_current_claims),
+    db: Session = Depends(get_db),
+):
+    """Defensa en profundidad (ver migración `83dc2610fe35`): además del
+    `.filter(tenant_id=...)` que ya pone cada endpoint, fija el tenant actual
+    como variable de sesión de Postgres para que las políticas de Row-Level
+    Security lo hagan cumplir también a nivel de base — un query que olvide
+    el filtro sigue sin poder ver filas de otro tenant.
+
+    Bug real encontrado probando esto contra Postgres de verdad: con
+    `set_config(..., true)` ("is_local", equivalente a SET LOCAL) el valor se
+    descarta en el PRIMER commit — pero varias rutas hacen más de un commit
+    por request (insertar la predicción, después insertar la alerta), y el
+    segundo `db.refresh(...)` fallaba con "invalid input syntax for type
+    uuid: ''" porque el contexto ya se había perdido. Se usa `false`
+    ("session", sobrevive a los commits del connection mientras dura) y se
+    resetea explícitamente al terminar el request (`finally`) — así una
+    conexión que vuelve al pool nunca arrastra el tenant de un request
+    anterior al siguiente.
+
+    En SQLite (dev local sin Docker) no hace nada — RLS no existe ahí, el
+    filtro de aplicación sigue siendo la única defensa, como siempre fue.
+    """
+    is_postgres = db.bind.dialect.name == "postgresql"
+    if is_postgres:
+        db.execute(text("SELECT set_config('app.current_tenant_id', :tid, false)"), {"tid": claims.tenant_id})
+    try:
+        yield db
+    finally:
+        if is_postgres:
+            db.execute(text("SELECT set_config('app.current_tenant_id', '', false)"))
+            db.commit()
 
 
 DbSession = Session

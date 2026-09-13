@@ -3,8 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import Claims, get_current_claims
-from app.core.database import get_db
+from app.api.deps import Claims, get_current_claims, get_tenant_scoped_db
 from app.models.asset import Asset
 from app.models.sensor_reading import SensorReading
 from app.schemas.sensor_reading import SensorReadingIn, SensorReadingOut
@@ -24,7 +23,7 @@ def ingest_reading(
     asset_id: str,
     payload: SensorReadingIn,
     claims: Claims = Depends(get_current_claims),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_scoped_db),
 ) -> dict:
     """Punto de entrada del simulador (ml/pipelines/simulate_realtime.py) y de
     cualquier fuente de datos real en el futuro."""
@@ -49,7 +48,7 @@ def list_readings(
     since: datetime | None = Query(default=None),
     limit: int = Query(default=500, le=5000),
     claims: Claims = Depends(get_current_claims),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_scoped_db),
 ) -> list[SensorReading]:
     _get_owned_asset(asset_id, claims.tenant_id, db)
     query = db.query(SensorReading).filter(SensorReading.asset_id == asset_id)

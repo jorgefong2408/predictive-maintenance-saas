@@ -15,23 +15,39 @@ spec:
       initContainers:
         - name: migrate
           image: ghcr.io/jorgefong2408/predictive-maintenance-saas/backend:latest
-          command: ["alembic", "upgrade", "head"]
+          # NO usar "alembic upgrade head" directo: con 2 réplicas arrancando
+          # a la vez, dos migraciones concurrentes contra el mismo Postgres
+          # son una carrera real (Alembic no tiene locking propio). Este
+          # script serializa con un advisory lock — ver su docstring.
+          command: ["python", "scripts/migrate_with_lock.py"]
           envFrom: [{ configMapRef: { name: backend-config } }]
           env:
-            - name: DATABASE_URL
+            # Rol ADMIN (superusuario) — el único que puede correr el DDL de
+            # las migraciones (CREATE POLICY, CREATE ROLE...). Nunca usar
+            # esta URL para servir requests reales.
+            - name: MIGRATION_DATABASE_URL
               value: "postgresql+psycopg2://predictmaint:$(POSTGRES_PASSWORD)@postgres:5432/predictmaint"
             - name: POSTGRES_PASSWORD
               valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: POSTGRES_PASSWORD } }
+            # La migración 52dbcb3527ef lee esto para crear/actualizar la
+            # contraseña del rol restringido predictmaint_app.
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: APP_DB_PASSWORD } }
       containers:
         - name: backend
           image: ghcr.io/jorgefong2408/predictive-maintenance-saas/backend:latest
           ports: [{ containerPort: 8000 }]
           envFrom: [{ configMapRef: { name: backend-config } }]
           env:
+            # Rol RESTRINGIDO (sin superusuario, sin BYPASSRLS) — el único
+            # para el que Row-Level Security (migración 83dc2610fe35)
+            # realmente aplica. Un superusuario de Postgres salta RLS
+            # siempre, sin importar FORCE ROW LEVEL SECURITY — probado
+            # contra el Postgres real de docker-compose antes de asumirlo.
             - name: DATABASE_URL
-              value: "postgresql+psycopg2://predictmaint:$(POSTGRES_PASSWORD)@postgres:5432/predictmaint"
-            - name: POSTGRES_PASSWORD
-              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: POSTGRES_PASSWORD } }
+              value: "postgresql+psycopg2://predictmaint_app:$(APP_DB_PASSWORD)@postgres:5432/predictmaint"
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: APP_DB_PASSWORD } }
             - name: JWT_SECRET_KEY
               valueFrom: { secretKeyRef: { name: predictmaint-secrets, key: JWT_SECRET_KEY } }
           readinessProbe:
@@ -47,6 +63,10 @@ metadata:
   name: backend-config
   namespace: predictmaint
 data:
+  # ENVIRONMENT=production activa el chequeo de app/core/config.py que
+  # rechaza arrancar si JWT_SECRET_KEY sigue en su valor default — obliga a
+  # que 01-secrets.yaml tenga un secreto real antes de que el pod levante.
+  ENVIRONMENT: "production"
   MLFLOW_TRACKING_URI: "http://mlflow:5000"
   CORS_ORIGINS: '["https://predictmaint.example.com"]'
   RETRAIN_INTERVAL_HOURS: "24"

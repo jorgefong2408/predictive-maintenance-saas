@@ -14,7 +14,11 @@ from app.core.database import Base  # noqa: E402
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", get_settings().database_url)
+_settings = get_settings()
+# Las migraciones corren DDL (CREATE POLICY, CREATE ROLE...) que el rol
+# restringido de la app (database_url) no tiene permiso de ejecutar — ver
+# comentario en app/core/config.py.
+config.set_main_option("sqlalchemy.url", _settings.migration_database_url or _settings.database_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

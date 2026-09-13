@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import Claims, get_current_claims
-from app.core.database import get_db
+from app.api.deps import Claims, get_current_claims, get_tenant_scoped_db
 from app.models.alert import Alert
 from app.models.asset import Asset
 from app.models.prediction import Prediction
@@ -64,7 +63,7 @@ def create_prediction(
     asset_id: str,
     payload: PredictionRequest,
     claims: Claims = Depends(get_current_claims),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_tenant_scoped_db),
 ) -> Prediction:
     asset = _get_owned_asset(asset_id, claims.tenant_id, db)
 
@@ -96,7 +95,7 @@ def create_prediction(
 
 @router.get("", response_model=list[PredictionOut])
 def list_predictions(
-    asset_id: str, claims: Claims = Depends(get_current_claims), db: Session = Depends(get_db)
+    asset_id: str, claims: Claims = Depends(get_current_claims), db: Session = Depends(get_tenant_scoped_db)
 ) -> list[Prediction]:
     _get_owned_asset(asset_id, claims.tenant_id, db)
     return (

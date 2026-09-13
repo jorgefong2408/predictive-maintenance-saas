@@ -65,8 +65,8 @@ def load_assets(conn, assets: pd.DataFrame) -> None:
         )
 
 
-def load_sensor_readings(engine, readings: pd.DataFrame) -> None:
-    readings.to_sql("sensor_readings", engine, if_exists="append", index=False, method="multi", chunksize=5000)
+def load_sensor_readings(conn, readings: pd.DataFrame) -> None:
+    readings.to_sql("sensor_readings", conn, if_exists="append", index=False, method="multi", chunksize=5000)
 
 
 def load_failure_events(conn, failures: pd.DataFrame) -> None:
@@ -97,11 +97,19 @@ def main() -> None:
     failures = pd.read_parquet(PROCESSED_DIR / "failure_events.parquet")
 
     with engine.begin() as conn:
+        # assets/sensor_readings/failure_events tienen Row-Level Security
+        # (backend/alembic/versions/83dc2610fe35_*.py): sin fijar esto, Postgres
+        # rechaza los INSERT de este script (que no pasa por la API/FastAPI,
+        # donde normalmente se fija por request — ver app/api/deps.py).
+        # `false` (no "is_local"): esta conexión hace todo su trabajo en esta
+        # única transacción/bloque, no hace falta que se resetee sola antes.
+        conn.execute(
+            text("SELECT set_config('app.current_tenant_id', :tid, false)"), {"tid": str(DEMO_TENANT_ID)}
+        )
         ensure_demo_tenant(conn)
         load_assets(conn, assets)
         load_failure_events(conn, failures)
-
-    load_sensor_readings(engine, readings)
+        load_sensor_readings(conn, readings)
 
     print(f"Cargados: {len(assets)} assets, {len(readings)} sensor_readings, {len(failures)} failure_events")
 

@@ -226,3 +226,38 @@ Pasada de revisión sobre lo ya construido, buscando específicamente qué se ro
 **Frontend: un token vencido fallaba en silencio.** `RequireAuth` solo comprobaba que hubiera *algún* token, no que fuera válido — con uno vencido o de un `JWT_SECRET_KEY` distinto, la UI mostraba listas vacías sin explicación (lo noté probando a mano en la Semana 6). Fix: interceptor de respuesta en `lib/api.ts` que, ante un 401 en una petición autenticada, limpia el token y redirige a `/login`. Verificado corrompiendo el token a mano y confirmando la redirección.
 
 **Corrección de dependencias:** `psycopg2-binary` lo usa el backend directamente (driver de Postgres) pero solo estaba declarado en el grupo `ml` de `pyproject.toml` — funcionaba porque ambos grupos se instalan juntos hoy, pero era información incorrecta.
+
+## Seguridad (post-plan)
+
+Segunda pasada de revisión, esta vez enfocada en bugs y seguridad. Cada punto se verificó contra el Postgres real de `docker-compose`, no solo con tests.
+
+**Bug real: race condition en las migraciones de K8s.** `infra/k8s/04-backend.yaml` corre `alembic upgrade head` en un initContainer por réplica (2 réplicas) — si arrancan a la vez, dos migraciones concurrentes contra el mismo Postgres es una carrera real (Alembic no tiene locking propio). Fix: `backend/scripts/migrate_with_lock.py`, que serializa con un advisory lock de Postgres antes de correr la migración — mismo patrón que ya usaba el scheduler. **Verificado con Postgres real:** dos procesos compitiendo por el mismo lock se serializaron exactamente como se espera (el segundo esperó a que el primero soltara el lock, no hubo ejecución concurrente).
+
+**Bug de seguridad real: sin rate limiting en `/auth/login`.** Nada impedía fuerza bruta sobre contraseñas. Fix: `login_attempts` (tabla nueva, persistida en Postgres — no en memoria, para que sea correcto entre réplicas), bloqueo de 15 min tras 5 intentos fallidos por email. En el camino apareció un bug de tz-aware/naive datetimes (`can't subtract offset-naive and offset-aware datetimes` en el segundo intento fallido) — SQLite no preserva tzinfo en el round-trip a la base aunque la columna se declare `timezone=True`; se normaliza a mano en vez de confiar en el tipo de columna.
+
+**Bug de seguridad real: `JWT_SECRET_KEY=change-me` no se bloqueaba en ningún lado.** El sistema arrancaba igual de "producción" con el secreto default público (cualquiera que vea este repo lo conoce). Fix: `Settings` rechaza arrancar si `ENVIRONMENT=production` y el secreto sigue siendo uno de los valores default conocidos.
+
+**Row-Level Security como defensa en profundidad — con un hallazgo serio en el camino.** Hasta acá, el aislamiento multi-tenant dependía 100% de que cada query recordara `.filter(tenant_id=...)`. Se agregaron políticas de RLS en Postgres (`tenant_id = NULLIF(current_setting('app.current_tenant_id', true), '')::uuid`, fail-closed si no está seteado) para que un query que lo olvide siga sin poder ver filas de otro tenant.
+
+Al probarlo con SQL crudo contra el Postgres real — sin pasar por la API, exactamente el escenario que esto debía cubrir — **las políticas no protegían nada**: `predictmaint`, el rol con el que se conecta la app, resultó ser SUPERUSUARIO (así lo crea la imagen de TimescaleDB vía `POSTGRES_USER`), y un superusuario de Postgres salta RLS siempre, sin excepción, sin importar `FORCE ROW LEVEL SECURITY`. Sin este hallazgo, el código habría quedado *pareciendo* seguro sin estarlo.
+
+Fix real: un segundo rol, `predictmaint_app` (migración `52dbcb3527ef`), sin superusuario y sin `BYPASSRLS`, con permisos de datos pero no de DDL — es el que ahora usa el backend en runtime (`DATABASE_URL`); las migraciones siguen corriendo con el rol admin (`MIGRATION_DATABASE_URL`). Un segundo bug apareció al conectar así: varias rutas hacen más de un `commit()` por request (insertar la predicción, después la alerta), y `set_config(..., true)` ("is_local", equivalente a `SET LOCAL`) se descarta en el primer commit — el segundo `db.refresh(...)` fallaba con `invalid input syntax for type uuid: ''`. Se cambió a `set_config(..., false)` (dura toda la sesión/conexión) con reset explícito al final del request.
+
+**Verificación final, conectado como `predictmaint_app` (el rol real de producción), con SQL crudo que "olvida" el filtro de tenant:**
+
+```
+-- sin fijar el tenant:
+SELECT name FROM assets;
+ name
+------
+(0 rows)                          -- bloqueado, aunque la tabla tenga filas de sobra
+
+-- con el tenant fijado:
+SELECT set_config('app.current_tenant_id', '<id-tenant-A>', false);
+SELECT name FROM assets;
+   name
+-----------
+ AssetA2                          -- solo la fila de ese tenant, ninguna de otro
+```
+
+No se ejecutó nada de esto en el cluster EKS de otro proyecto detectado en la Semana 8 — solo contra el Postgres de `docker-compose`.
