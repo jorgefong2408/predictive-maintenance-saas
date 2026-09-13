@@ -23,6 +23,9 @@ ml/data/raw/*
 ml/data/processed/*
 !ml/data/raw/.gitkeep
 !ml/data/processed/.gitkeep
+# Excepción: dataset pequeño (512KB) y público (UCI), necesario para que el
+# build de backend/Dockerfile no dependa de una descarga externa en CI.
+!ml/data/raw/ai4i2020.csv
 
 # ML artifacts
 mlruns/
