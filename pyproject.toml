@@ -39,6 +39,7 @@ dev = [
     "httpx>=0.28.1",
     "locust>=2.46.5",
     "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
     "ruff>=0.16.7",
 ]
 
@@ -51,3 +52,15 @@ exclude = ["backend/alembic/versions", "ml/notebooks"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
+
+[tool.coverage.run]
+source = ["backend/app"]
+omit = ["backend/app/main.py"]
+
+[tool.coverage.report]
+# main.py se deja fuera del run/omit de arriba: su única lógica real
+# (arrancar/parar PostgresListener en el lifespan) es Postgres-only y ya se
+# verificó a mano contra el stack de Docker (ver README, "Seguridad") —
+# medirla contra SQLite solo restaría % sin decir nada nuevo.
+fail_under = 95
+show_missing = true

@@ -24,11 +24,11 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check backend ml load-testing
 
-      - name: Test (pytest)
-        run: uv run pytest backend/tests -v
+      - name: Test (pytest + coverage)
+        run: uv run pytest backend/tests -v --cov --cov-report=term-missing
 
   frontend:
-    name: Frontend (lint + build)
+    name: Frontend (lint + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,6 +44,7 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      - run: npm run test
       - run: npm run build
 
   build-and-push:

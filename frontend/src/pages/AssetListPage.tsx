@@ -50,8 +50,11 @@ export function AssetListPage() {
       {showForm && (
         <form onSubmit={onSubmit} className="mb-4 flex items-end gap-2 rounded-lg border border-slate-200 bg-white p-4">
           <div className="flex-1">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Nombre</label>
+            <label htmlFor="new-asset-name" className="mb-1 block text-xs font-medium text-slate-600">
+              Nombre
+            </label>
             <input
+              id="new-asset-name"
               autoFocus
               required
               value={name}
@@ -61,8 +64,11 @@ export function AssetListPage() {
             />
           </div>
           <div className="flex-1">
-            <label className="mb-1 block text-xs font-medium text-slate-600">Tipo</label>
+            <label htmlFor="new-asset-type" className="mb-1 block text-xs font-medium text-slate-600">
+              Tipo
+            </label>
             <input
+              id="new-asset-type"
               value={assetType}
               onChange={(e) => setAssetType(e.target.value)}
               className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm"

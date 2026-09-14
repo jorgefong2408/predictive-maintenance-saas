@@ -45,8 +45,11 @@ export function RegisterPage() {
 
         <form onSubmit={onSubmit} className="space-y-4">
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Nombre de la empresa</label>
+            <label htmlFor="register-tenant-name" className="mb-1 block text-sm font-medium text-slate-700">
+              Nombre de la empresa
+            </label>
             <input
+              id="register-tenant-name"
               required
               value={tenantName}
               onChange={(e) => setTenantName(e.target.value)}
@@ -56,8 +59,11 @@ export function RegisterPage() {
             {tenantName && <p className="mt-1 text-xs text-slate-400">slug: {slugify(tenantName)}</p>}
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Email del admin</label>
+            <label htmlFor="register-admin-email" className="mb-1 block text-sm font-medium text-slate-700">
+              Email del admin
+            </label>
             <input
+              id="register-admin-email"
               type="email"
               required
               value={adminEmail}
@@ -66,8 +72,11 @@ export function RegisterPage() {
             />
           </div>
           <div>
-            <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
+            <label htmlFor="register-password" className="mb-1 block text-sm font-medium text-slate-700">
+              Password
+            </label>
             <input
+              id="register-password"
               type="password"
               required
               minLength={8}

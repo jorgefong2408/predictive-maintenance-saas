@@ -7,11 +7,14 @@ venv/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+htmlcov/
 
 # Node / frontend
 node_modules/
 frontend/dist/
 frontend/.vite/
+frontend/coverage/
 
 # Env / secrets
 .env

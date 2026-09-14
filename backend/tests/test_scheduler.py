@@ -37,6 +37,40 @@ def test_postgres_path_retrains_when_lock_acquired():
         assert mock_conn.execute.call_count == 2
 
 
+def test_do_retrain_swallows_exceptions_instead_of_crashing_the_scheduler_thread():
+    """APScheduler no reintenta ni loguea solo una excepción no atrapada en un
+    job — se pierde en silencio. _do_retrain la atrapa y loguea a propósito."""
+    with patch("app.services.scheduler.trigger_ai4i_retrain", side_effect=RuntimeError("MLflow caído")):
+        scheduler._do_retrain()  # no debe propagar la excepción
+
+
+def test_start_adds_the_job_and_starts_when_enabled():
+    original_enabled = scheduler.settings.enable_scheduler
+    scheduler.settings.enable_scheduler = True
+    try:
+        scheduler.start()
+        assert scheduler.scheduler.running
+        assert scheduler.scheduler.get_job("ai4i_retrain") is not None
+    finally:
+        scheduler.stop()
+        scheduler.settings.enable_scheduler = original_enabled
+
+
+def test_start_does_nothing_when_disabled():
+    original_enabled = scheduler.settings.enable_scheduler
+    scheduler.settings.enable_scheduler = False
+    try:
+        scheduler.start()
+        assert not scheduler.scheduler.running
+    finally:
+        scheduler.settings.enable_scheduler = original_enabled
+
+
+def test_stop_is_a_noop_when_not_running():
+    assert not scheduler.scheduler.running
+    scheduler.stop()  # no debe explotar por parar algo que no arrancó
+
+
 def test_postgres_path_skips_when_another_replica_holds_the_lock():
     with patch("app.services.scheduler.engine") as mock_engine, patch(
         "app.services.scheduler._do_retrain"
