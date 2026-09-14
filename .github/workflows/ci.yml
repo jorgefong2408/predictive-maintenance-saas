@@ -24,6 +24,9 @@ jobs:
       - name: Lint (ruff)
         run: uv run ruff check backend ml load-testing
 
+      - name: Train & registrar modelo champion (requerido por tests de predicción/admin)
+        run: uv run python ml/pipelines/retrain.py
+
       - name: Test (pytest + coverage)
         run: uv run pytest backend/tests -v --cov --cov-report=term-missing
 
