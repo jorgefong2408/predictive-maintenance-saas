@@ -66,6 +66,13 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_started
+    healthcheck:
+      # curl no está en python:3.12-slim; evitamos sumarlo solo para esto.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     build:
@@ -76,7 +83,8 @@ services:
     ports:
       - "5173:80"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   # Semana 9: observabilidad. Métricas del backend en /metrics (formato
   # Prometheus, vía prometheus-fastapi-instrumentator).
@@ -84,10 +92,12 @@ services:
     image: prom/prometheus:v3.1.0
     volumes:
       - ./infra/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/observability/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
     ports:
       - "9090:9090"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana:11.4.0

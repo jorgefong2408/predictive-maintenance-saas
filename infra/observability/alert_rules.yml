@@ -1,0 +1,37 @@
+groups:
+  - name: predictmaint-backend
+    rules:
+      - alert: BackendDown
+        expr: up{job="predictmaint-backend"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "El backend no responde al scrape de Prometheus"
+          description: "up{{ $labels.job }} lleva caído más de 1m. Ver docker compose logs backend."
+
+      - alert: HighErrorRate
+        expr: >
+          sum(rate(http_requests_total{status="5xx"}[5m]))
+          / sum(rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tasa de errores 5xx > 5%"
+          description: "{{ $value | humanizePercentage }} de las requests de los últimos 5m devolvieron 5xx."
+
+      # Umbral de 2s alineado a los buckets del histograma (ver
+      # load-testing/RESULTS.md): la cola p99 bajo carga concurrente ya
+      # documentada como sin causa raíz confirmada — esta regla es la que
+      # habría avisado de ese problema en tiempo real en vez de enterarse
+      # solo corriendo Locust a mano.
+      - alert: HighP99Latency
+        expr: >
+          histogram_quantile(0.99, sum(rate(http_request_duration_highr_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 de latencia > 2s"
+          description: "p99 = {{ $value | humanizeDuration }} en los últimos 5m."

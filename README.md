@@ -261,3 +261,25 @@ SELECT name FROM assets;
 ```
 
 No se ejecutó nada de esto en el cluster EKS de otro proyecto detectado en la Semana 8 — solo contra el Postgres de `docker-compose`.
+
+## Testing (post-plan)
+
+**Cobertura de backend medida y exigida, no solo "hay tests".** `pytest-cov` con `fail_under=95` en `pyproject.toml` — CI corre `pytest --cov --cov-report=term-missing` y rompe el build si baja del umbral (98.83% real). Cubre las ramas de dialecto Postgres/SQLite (RLS, WebSocket cross-réplica, advisory locks del scheduler) que antes solo se habían verificado a mano.
+
+**Bug propio en CI, encontrado y corregido en el camino:** el `fail_under=95` se validó solo contra la máquina local, donde `ml/mlflow.db` (gitignored) ya existía de semanas anteriores. En un checkout limpio de CI ese archivo no existe, así que los tests que dependen del Model Registry se saltaban y la cobertura real caía a 91.35%, rompiendo el gate. En vez de bajar el umbral para taparlo, CI ahora entrena y registra el modelo champion real (`uv run python ml/pipelines/retrain.py`, ~20s con el dataset AI4I ya incluido en el repo) antes de correr pytest — verificado clonando el repo a un directorio limpio y reproduciendo el paso exacto de CI.
+
+**Frontend: de 0% de cobertura a una suite real.** Vitest + Testing Library + jsdom, cubriendo el interceptor de axios, `AuthProvider`/`RequireAuth`, y los flujos de login/registro/lista de activos/alertas/reconexión de WebSocket (ver más abajo). De paso aparecieron 3 bugs reales de accesibilidad: labels sin `htmlFor`/`id` en `LoginPage`, `RegisterPage` y `AssetListPage`, encontrados porque `getByLabelText` de Testing Library no los encontraba — no se cambió la query, se arregló el componente.
+
+## Arquitectura y observabilidad (post-plan, batch 3)
+
+Tercera pasada, esta vez sobre huecos operativos de bajo riesgo: qué pasa cuando algo se cae, no qué tan rápido corre.
+
+**El backend no tenía healthcheck en `docker-compose.yml`** (solo Postgres lo tenía) — `depends_on: backend` en `frontend`/`prometheus` significaba "arrancó el proceso", no "puede responder". Fix: `healthcheck` contra `/health` usando `python -c "urllib.request..."` (sin sumar `curl` a la imagen `python:3.12-slim`, que no lo trae); `frontend` y `prometheus` ahora dependen de `condition: service_healthy`. K8s (`infra/k8s/04-backend.yaml`) ya tenía el `readinessProbe`/`livenessProbe` equivalente desde la Semana 8 — este era el hueco de docker-compose específicamente. Verificado en vivo contra el stack real: `docker compose ps` reporta `backend ... (healthy)`.
+
+**Cero reglas de alerting en Prometheus** — había dashboards en Grafana pero nada que avisara solo. Añadidas 3 reglas en `infra/observability/alert_rules.yml` (`BackendDown`, `HighErrorRate` sobre `http_requests_total{status="5xx"}`, `HighP99Latency > 2s` sobre `http_request_duration_highr_seconds_bucket` — el mismo histograma que documentó la cola p99 sin causa confirmada en `load-testing/RESULTS.md`; esta regla es la que la habría señalado en tiempo real). Verificado contra el Prometheus real: `curl localhost:9090/api/v1/rules` devuelve las 3 con `"health":"ok"`.
+
+**Sin logging estructurado.** Todo salía como texto libre de uvicorn — imposible de filtrar en Loki por campo (solo por regex). Fix: `app/core/logging.py` (formatter JSON propio, sin sumar una dependencia nueva) más un middleware en `app/main.py` que loguea una línea por request con `method`/`path`/`status_code`/`duration_ms`/`tenant_id` (resuelto del JWT, best-effort — nunca afecta la respuesta real). **Verificado de punta a punta, no solo que imprime JSON:** una query real a la API de Loki (`{container=~"...backend.*"} | json | status_code = \`401\``) devolvió exactamente la request que generó ese 401 — confirma que el campo es filtrable de verdad, no solo que se ve bien en la consola.
+
+**Frontend: un error de render tumbaba toda la app en blanco.** No había ningún error boundary — cualquier excepción durante un render (ej. un campo inesperado en una respuesta) dejaba la pantalla vacía sin ninguna pista. Fix: `components/ErrorBoundary.tsx` envolviendo `<App />` en `main.tsx`, con una UI de fallback y botón de recarga. Cubierto con test (`ErrorBoundary.test.tsx`, un componente que lanza a propósito).
+
+**Frontend: el WebSocket de alertas no se reconectaba nunca.** Un reinicio del backend (redeploy, restart de contenedor) o cualquier corte de red dejaba el panel de alertas muerto en silencio hasta recargar la página a mano. Fix: `lib/useAlertsSocket.ts` reconecta con backoff exponencial (1s → 2s → 4s... tope 30s, reset al reconectar), salvo que el cierre sea por token inválido (código `4401` que ya usa `app/api/ws.py` — reintentar ahí solo repetiría el mismo rechazo). Verificado con un WebSocket falso y timers controlados (`useAlertsSocket.test.tsx`, 6 casos: backoff creciente, reset en `onopen`, no reintento en 4401, cleanup al desmontar) **y** en vivo: reiniciando el backend real con la sesión abierta en el navegador, la UI no se rompió y el error de conexión quedó en consola como se esperaba.
