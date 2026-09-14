@@ -1,11 +1,11 @@
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import CheckConstraint, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.models.types import GUID, new_uuid
+from app.models.types import GUID, new_uuid, utc_now_naive
 
 if TYPE_CHECKING:
     from app.models.tenant import Tenant
@@ -20,6 +20,6 @@ class User(Base):
     email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[str] = mapped_column(String, nullable=False, default="operator")
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now_naive)
 
     tenant: Mapped["Tenant"] = relationship(back_populates="users")

@@ -7,7 +7,7 @@ uno."""
 
 import asyncio
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.services.ws_manager import NOTIFY_CHANNEL, ConnectionManager, PostgresListener, notify_alert
 
@@ -105,9 +105,9 @@ def test_broadcast_threadsafe_dispatches_to_the_bound_loop():
 
 
 def test_notify_alert_publishes_via_pg_notify_with_json_payload():
-    conn = MagicMock()
+    conn = AsyncMock()
 
-    notify_alert(conn, "tenant-a", {"type": "alert", "alert": {"id": "1"}})
+    asyncio.run(notify_alert(conn, "tenant-a", {"type": "alert", "alert": {"id": "1"}}))
 
     conn.execute.assert_called_once()
     (stmt, params), _ = conn.execute.call_args

@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.models.types import GUID, new_uuid
+from app.models.types import GUID, new_uuid, utc_now_naive
 
 
 class FailureEvent(Base):
@@ -17,4 +17,4 @@ class FailureEvent(Base):
     failure_type: Mapped[str] = mapped_column(String, nullable=False)
     source: Mapped[str] = mapped_column(String, nullable=False, default="historical_dataset")
     notes: Mapped[str | None] = mapped_column(String, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(default=utc_now_naive)

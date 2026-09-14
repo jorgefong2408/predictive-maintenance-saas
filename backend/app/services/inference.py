@@ -20,8 +20,9 @@ import pandas as pd
 from fastapi import HTTPException, status
 from mlflow import MlflowClient
 from mlflow.exceptions import MlflowException
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.models.asset import Asset
@@ -81,34 +82,35 @@ def _resolve_champion_version() -> str:
 
 
 def _current_ai4i_model() -> tuple[object, str]:
+    """Bloqueante (red hacia MLflow + carga del artefacto desde disco) --
+    quien la llama desde una ruta async debe correrla en threadpool."""
     version = _resolve_champion_version()
     return _load_model_version(version), version
 
 
-def _latest_readings_by_sensor(db: Session, asset_id: str) -> dict[str, float]:
+async def _latest_readings_by_sensor(db: AsyncSession, asset_id: str) -> dict[str, float]:
     subq = (
-        db.query(
+        select(
             SensorReading.sensor_name,
             func.max(SensorReading.time).label("max_time"),
         )
-        .filter(SensorReading.asset_id == asset_id)
+        .where(SensorReading.asset_id == asset_id)
         .group_by(SensorReading.sensor_name)
         .subquery()
     )
-    rows = (
-        db.query(SensorReading)
+    result = await db.execute(
+        select(SensorReading)
         .join(
             subq,
             (SensorReading.sensor_name == subq.c.sensor_name) & (SensorReading.time == subq.c.max_time),
         )
-        .filter(SensorReading.asset_id == asset_id)
-        .all()
+        .where(SensorReading.asset_id == asset_id)
     )
-    return {row.sensor_name: row.value for row in rows}
+    return {row.sensor_name: row.value for row in result.scalars().all()}
 
 
-def predict_failure_probability(db: Session, asset: Asset) -> tuple[float, str]:
-    latest = _latest_readings_by_sensor(db, asset.id)
+async def predict_failure_probability(db: AsyncSession, asset: Asset) -> tuple[float, str]:
+    latest = await _latest_readings_by_sensor(db, asset.id)
     missing = [s for s in AI4I_SENSOR_FEATURES if s not in latest]
     if missing:
         raise HTTPException(
@@ -124,6 +126,10 @@ def predict_failure_probability(db: Session, asset: Asset) -> tuple[float, str]:
     }
     X = pd.DataFrame([features])[AI4I_SENSOR_FEATURES + ["Type_L", "Type_M"]]
 
-    model, version = _current_ai4i_model()
-    probability = float(model.predict_proba(X)[0, 1])
+    # Ambas llamadas son bloqueantes (red/disco la primera, CPU la segunda) --
+    # corridas directo en la ruta async, congelarían el event loop para TODAS
+    # las requests en curso mientras dura la inferencia, no solo esta.
+    model, version = await run_in_threadpool(_current_ai4i_model)
+    proba = await run_in_threadpool(model.predict_proba, X)
+    probability = float(proba[0, 1])
     return probability, version

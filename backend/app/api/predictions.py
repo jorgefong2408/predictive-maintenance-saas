@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import Claims, get_current_claims, get_tenant_scoped_db
 from app.models.alert import Alert
@@ -20,7 +21,7 @@ FAILURE_PROBABILITY_WARNING = 0.5
 FAILURE_PROBABILITY_CRITICAL = 0.8
 
 
-def _maybe_create_alert(db: Session, asset: Asset, tenant_id: str, prediction: Prediction) -> None:
+async def _maybe_create_alert(db: AsyncSession, asset: Asset, tenant_id: str, prediction: Prediction) -> None:
     if prediction.prediction_type != "failure_probability" or prediction.value < FAILURE_PROBABILITY_WARNING:
         return
     severity = "critical" if prediction.value >= FAILURE_PROBABILITY_CRITICAL else "warning"
@@ -37,35 +38,37 @@ def _maybe_create_alert(db: Session, asset: Asset, tenant_id: str, prediction: P
     )
     db.add(alert)
     asset.status = severity
-    db.commit()
-    db.refresh(alert)
+    await db.commit()
+    await db.refresh(alert)
 
     ws_message = {"type": "alert", "alert": AlertOut.model_validate(alert).model_dump(mode="json")}
     if db.bind.dialect.name == "postgresql":
         # Multi-réplica (infra/k8s/04-backend.yaml): publica para que TODAS
         # las réplicas lo entreguen a sus propios clientes, incluida esta.
-        notify_alert(db, tenant_id, ws_message)
-        db.commit()
+        await notify_alert(db, tenant_id, ws_message)
+        await db.commit()
     else:
         # SQLite (dev local sin Docker): un solo proceso, entrega directa.
         manager.broadcast_threadsafe(tenant_id, ws_message)
 
 
-def _get_owned_asset(asset_id: str, tenant_id: str, db: Session) -> Asset:
-    asset = db.query(Asset).filter(Asset.id == asset_id, Asset.tenant_id == tenant_id).first()
+async def _get_owned_asset(asset_id: str, tenant_id: str, db: AsyncSession) -> Asset:
+    asset = (
+        await db.execute(select(Asset).where(Asset.id == asset_id, Asset.tenant_id == tenant_id))
+    ).scalar_one_or_none()
     if asset is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Activo no encontrado")
     return asset
 
 
 @router.post("", response_model=PredictionOut, status_code=status.HTTP_201_CREATED)
-def create_prediction(
+async def create_prediction(
     asset_id: str,
     payload: PredictionRequest,
     claims: Claims = Depends(get_current_claims),
-    db: Session = Depends(get_tenant_scoped_db),
+    db: AsyncSession = Depends(get_tenant_scoped_db),
 ) -> Prediction:
-    asset = _get_owned_asset(asset_id, claims.tenant_id, db)
+    asset = await _get_owned_asset(asset_id, claims.tenant_id, db)
 
     if payload.prediction_type != "failure_probability":
         raise HTTPException(
@@ -76,7 +79,7 @@ def create_prediction(
             ),
         )
 
-    value, model_version = inference.predict_failure_probability(db, asset)
+    value, model_version = await inference.predict_failure_probability(db, asset)
     prediction = Prediction(
         tenant_id=claims.tenant_id,
         asset_id=asset.id,
@@ -86,21 +89,19 @@ def create_prediction(
         value=value,
     )
     db.add(prediction)
-    db.commit()
-    db.refresh(prediction)
+    await db.commit()
+    await db.refresh(prediction)
 
-    _maybe_create_alert(db, asset, claims.tenant_id, prediction)
+    await _maybe_create_alert(db, asset, claims.tenant_id, prediction)
     return prediction
 
 
 @router.get("", response_model=list[PredictionOut])
-def list_predictions(
-    asset_id: str, claims: Claims = Depends(get_current_claims), db: Session = Depends(get_tenant_scoped_db)
+async def list_predictions(
+    asset_id: str, claims: Claims = Depends(get_current_claims), db: AsyncSession = Depends(get_tenant_scoped_db)
 ) -> list[Prediction]:
-    _get_owned_asset(asset_id, claims.tenant_id, db)
-    return (
-        db.query(Prediction)
-        .filter(Prediction.asset_id == asset_id)
-        .order_by(Prediction.predicted_at.desc())
-        .all()
+    await _get_owned_asset(asset_id, claims.tenant_id, db)
+    result = await db.execute(
+        select(Prediction).where(Prediction.asset_id == asset_id).order_by(Prediction.predicted_at.desc())
     )
+    return list(result.scalars().all())

@@ -24,6 +24,8 @@ ml = [
 backend = [
     "alembic>=1.20.0",
     "apscheduler>=3.11.3",
+    "asyncpg>=0.31.0",
+    "aiosqlite>=0.21.0",
     "bcrypt>=5.0.0",
     "email-validator>=2.3.0",
     "fastapi>=0.141.1",
@@ -56,6 +58,12 @@ select = ["E", "F", "I", "UP"]
 [tool.coverage.run]
 source = ["backend/app"]
 omit = ["backend/app/main.py"]
+# Backend async (SQLAlchemy 2.0 async usa greenlet como puente hacia el
+# driver DBAPI; run_in_threadpool para bcrypt/MLflow usa hilos de verdad vía
+# AnyIO) -- sin esto, coverage.py no sigue la ejecución cuando cruza a un
+# greenlet/hilo nuevo y reporta como "no cubiertas" líneas que sí corrieron
+# (encontrado al migrar: 59/59 tests en verde pero cobertura cayó a 89%).
+concurrency = ["greenlet", "thread"]
 
 [tool.coverage.report]
 # main.py se deja fuera del run/omit de arriba: su única lógica real

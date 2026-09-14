@@ -1,7 +1,9 @@
+from collections.abc import AsyncGenerator
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import text
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import InvalidTokenError, decode_access_token
@@ -37,10 +39,10 @@ def require_role(*allowed_roles: str):
     return _check
 
 
-def get_tenant_scoped_db(
+async def get_tenant_scoped_db(
     claims: Claims = Depends(get_current_claims),
-    db: Session = Depends(get_db),
-):
+    db: AsyncSession = Depends(get_db),
+) -> AsyncGenerator[AsyncSession, None]:
     """Defensa en profundidad (ver migración `83dc2610fe35`): además del
     `.filter(tenant_id=...)` que ya pone cada endpoint, fija el tenant actual
     como variable de sesión de Postgres para que las políticas de Row-Level
@@ -63,13 +65,10 @@ def get_tenant_scoped_db(
     """
     is_postgres = db.bind.dialect.name == "postgresql"
     if is_postgres:
-        db.execute(text("SELECT set_config('app.current_tenant_id', :tid, false)"), {"tid": claims.tenant_id})
+        await db.execute(text("SELECT set_config('app.current_tenant_id', :tid, false)"), {"tid": claims.tenant_id})
     try:
         yield db
     finally:
         if is_postgres:
-            db.execute(text("SELECT set_config('app.current_tenant_id', '', false)"))
-            db.commit()
-
-
-DbSession = Session
+            await db.execute(text("SELECT set_config('app.current_tenant_id', '', false)"))
+            await db.commit()

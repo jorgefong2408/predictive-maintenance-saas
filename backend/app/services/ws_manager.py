@@ -65,15 +65,17 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
-def notify_alert(conn, tenant_id: str, message: dict) -> None:
+async def notify_alert(conn, tenant_id: str, message: dict) -> None:
     """Publica el aviso para que TODAS las réplicas lo reciban (vía sus
     PostgresListener) y lo entreguen a sus propios clientes conectados,
-    incluida la réplica que hizo esta llamada. `conn` es una conexión/sesión
-    de SQLAlchemy ya abierta (reusa la transacción del request en curso)."""
+    incluida la réplica que hizo esta llamada. `conn` es una sesión async de
+    SQLAlchemy ya abierta (reusa la transacción del request en curso)."""
     from sqlalchemy import text
 
     payload = json.dumps({"tenant_id": tenant_id, "message": message})
-    conn.execute(text("SELECT pg_notify(:channel, :payload)"), {"channel": NOTIFY_CHANNEL, "payload": payload})
+    await conn.execute(
+        text("SELECT pg_notify(:channel, :payload)"), {"channel": NOTIFY_CHANNEL, "payload": payload}
+    )
 
 
 class PostgresListener:

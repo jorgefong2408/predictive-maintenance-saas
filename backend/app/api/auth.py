@@ -2,8 +2,10 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import get_db
 from app.core.security import create_access_token, hash_password, verify_password
@@ -35,8 +37,10 @@ def _as_aware_utc(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
 
 
-def _register_failed_attempt(db: Session, email: str, now: datetime) -> None:
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.email == email).first()
+async def _register_failed_attempt(db: AsyncSession, email: str, now: datetime) -> None:
+    attempt = (
+        await db.execute(select(LoginAttempt).where(LoginAttempt.email == email))
+    ).scalar_one_or_none()
     if attempt is None:
         attempt = LoginAttempt(email=email, failed_count=0, window_started_at=now)
         db.add(attempt)
@@ -52,31 +56,35 @@ def _register_failed_attempt(db: Session, email: str, now: datetime) -> None:
     attempt.failed_count += 1
     if attempt.failed_count >= MAX_FAILED_ATTEMPTS:
         attempt.locked_until = now + timedelta(minutes=LOCKOUT_MINUTES)
-    db.commit()
+    await db.commit()
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
-def register_tenant(payload: RegisterTenantRequest, db: Session = Depends(get_db)) -> TokenResponse:
+async def register_tenant(payload: RegisterTenantRequest, db: AsyncSession = Depends(get_db)) -> TokenResponse:
     """Crea un tenant nuevo con su primer usuario admin (UC3: aislamiento multi-tenant)."""
     tenant = Tenant(name=payload.tenant_name, slug=payload.tenant_slug)
     db.add(tenant)
     try:
-        db.flush()
+        await db.flush()
     except IntegrityError as exc:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El slug de tenant ya existe") from exc
 
+    # bcrypt es CPU-bound y bloqueante (~100-200ms por el work factor) --
+    # correrlo directo en la ruta async congelaría el event loop para TODAS
+    # las requests en curso, no solo esta. run_in_threadpool lo saca del loop.
+    hashed_password = await run_in_threadpool(hash_password, payload.admin_password)
     admin = User(
         tenant_id=tenant.id,
         email=payload.admin_email,
-        hashed_password=hash_password(payload.admin_password),
+        hashed_password=hashed_password,
         role="admin",
     )
     db.add(admin)
     try:
-        db.commit()
+        await db.commit()
     except IntegrityError as exc:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="El email ya está registrado") from exc
 
     token = create_access_token(user_id=admin.id, tenant_id=tenant.id, role=admin.role)
@@ -84,11 +92,13 @@ def register_tenant(payload: RegisterTenantRequest, db: Session = Depends(get_db
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)) -> TokenResponse:
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: AsyncSession = Depends(get_db)) -> TokenResponse:
     now = datetime.now(UTC)
     email = form_data.username
 
-    attempt = db.query(LoginAttempt).filter(LoginAttempt.email == email).first()
+    attempt = (
+        await db.execute(select(LoginAttempt).where(LoginAttempt.email == email))
+    ).scalar_one_or_none()
     locked_until = _as_aware_utc(attempt.locked_until) if attempt else None
     if locked_until and locked_until > now:
         raise HTTPException(
@@ -96,14 +106,14 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
             detail="Demasiados intentos fallidos. Probá de nuevo más tarde.",
         )
 
-    user = db.query(User).filter(User.email == email).first()
-    if user is None or not verify_password(form_data.password, user.hashed_password):
-        _register_failed_attempt(db, email, now)
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
+    if user is None or not await run_in_threadpool(verify_password, form_data.password, user.hashed_password):
+        await _register_failed_attempt(db, email, now)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Email o contraseña incorrectos")
 
     if attempt is not None:
-        db.delete(attempt)
-        db.commit()
+        await db.delete(attempt)
+        await db.commit()
 
     token = create_access_token(user_id=user.id, tenant_id=user.tenant_id, role=user.role)
     return TokenResponse(access_token=token)

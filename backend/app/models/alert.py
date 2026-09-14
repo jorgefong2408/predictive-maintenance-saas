@@ -1,10 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
-from app.models.types import GUID, new_uuid
+from app.models.types import GUID, new_uuid, utc_now_naive
 
 
 class Alert(Base):
@@ -21,7 +21,7 @@ class Alert(Base):
     id: Mapped[str] = mapped_column(GUID(), primary_key=True, default=new_uuid)
     tenant_id: Mapped[str] = mapped_column(GUID(), ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
     asset_id: Mapped[str] = mapped_column(GUID(), ForeignKey("assets.id", ondelete="CASCADE"), nullable=False)
-    triggered_at: Mapped[datetime] = mapped_column(default=lambda: datetime.now(UTC))
+    triggered_at: Mapped[datetime] = mapped_column(default=utc_now_naive)
     severity: Mapped[str] = mapped_column(String, nullable=False)
     alert_type: Mapped[str] = mapped_column(String, nullable=False)
     message: Mapped[str] = mapped_column(String, nullable=False)
