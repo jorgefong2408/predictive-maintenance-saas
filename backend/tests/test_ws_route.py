@@ -3,9 +3,8 @@ pytest, solo a mano en el navegador. TestClient soporta WebSockets de
 verdad (no un doble), así que esto ejercita el endpoint real."""
 
 import pytest
-from starlette.websockets import WebSocketDisconnect
-
 from app.services.ws_manager import manager
+from starlette.websockets import WebSocketDisconnect
 
 
 def test_ws_rejects_invalid_token(client):

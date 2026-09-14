@@ -2,9 +2,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from mlflow.exceptions import MlflowException
-
 from app.core.security import create_access_token
+from mlflow.exceptions import MlflowException
 
 MLFLOW_DB = Path(__file__).resolve().parents[2] / "ml" / "mlflow.db"
 

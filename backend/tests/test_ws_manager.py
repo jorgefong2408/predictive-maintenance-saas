@@ -113,7 +113,10 @@ def test_notify_alert_publishes_via_pg_notify_with_json_payload():
     (stmt, params), _ = conn.execute.call_args
     assert str(stmt) == "SELECT pg_notify(:channel, :payload)"
     assert params["channel"] == NOTIFY_CHANNEL
-    assert json.loads(params["payload"]) == {"tenant_id": "tenant-a", "message": {"type": "alert", "alert": {"id": "1"}}}
+    assert json.loads(params["payload"]) == {
+        "tenant_id": "tenant-a",
+        "message": {"type": "alert", "alert": {"id": "1"}},
+    }
 
 
 def test_postgres_listener_start_spawns_a_daemon_thread():
