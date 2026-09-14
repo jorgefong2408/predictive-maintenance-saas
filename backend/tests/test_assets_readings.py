@@ -19,6 +19,47 @@ def test_create_and_list_assets(client, auth_headers):
     assert resp.json()[0]["status"] == "ok"
 
 
+def test_list_assets_orders_by_severity_not_alphabetically(client, auth_headers):
+    # "warning" > "ok" > "critical" alfabéticamente -- si el ORDER BY comparara
+    # el string tal cual, un activo crítico podría terminar en una página que
+    # la UI paginada nunca pide. Se fuerza el status directo en la DB porque
+    # la API no expone forma de crear un activo ya en warning/critical.
+    from app.core.database import SessionLocal
+    from app.models.asset import Asset
+
+    headers = auth_headers()
+    ids = {
+        name: client.post(
+            "/assets", headers=headers, json={"name": name, "asset_type": "cnc_milling_machine"}
+        ).json()["id"]
+        for name in ["Zeta-ok", "Alfa-warning", "Beta-critical"]
+    }
+
+    db = SessionLocal()
+    db.query(Asset).filter(Asset.id == ids["Alfa-warning"]).update({"status": "warning"})
+    db.query(Asset).filter(Asset.id == ids["Beta-critical"]).update({"status": "critical"})
+    db.commit()
+    db.close()
+
+    resp = client.get("/assets", headers=headers)
+    assert resp.status_code == 200
+    assert [a["name"] for a in resp.json()] == ["Beta-critical", "Alfa-warning", "Zeta-ok"]
+
+
+def test_list_assets_pagination_is_stable_and_covers_all_rows(client, auth_headers):
+    headers = auth_headers()
+    names = [f"Mill-{i:02d}" for i in range(5)]
+    for name in names:
+        resp = client.post("/assets", headers=headers, json={"name": name, "asset_type": "cnc_milling_machine"})
+        assert resp.status_code == 201
+
+    page1 = client.get("/assets", headers=headers, params={"limit": 3, "offset": 0}).json()
+    page2 = client.get("/assets", headers=headers, params={"limit": 3, "offset": 3}).json()
+
+    assert [a["name"] for a in page1] == names[:3]
+    assert [a["name"] for a in page2] == names[3:]
+
+
 def test_ingest_and_list_readings(client, auth_headers):
     headers = auth_headers()
     asset_id = _create_asset(client, headers)

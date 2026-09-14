@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { Layout } from "../components/Layout"
@@ -6,18 +6,30 @@ import { StatusBadge } from "../components/StatusBadge"
 import { api } from "../lib/api"
 import type { Asset } from "../types"
 
-const STATUS_ORDER: Record<Asset["status"], number> = { critical: 0, warning: 1, ok: 2 }
+const PAGE_SIZE = 20
 
 export function AssetListPage() {
   const queryClient = useQueryClient()
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState("")
   const [assetType, setAssetType] = useState("cnc_milling_machine")
+  const [page, setPage] = useState(0)
 
-  const { data: assets = [], isLoading } = useQuery({
-    queryKey: ["assets"],
-    queryFn: async () => (await api.get<Asset[]>("/assets")).data,
+  // El backend ya ordena por severidad (crítico primero) y aplica
+  // offset/limit — se pide un elemento de más para saber si hay página
+  // siguiente sin necesitar un total del backend (que hoy no expone).
+  const { data: rows = [], isFetching } = useQuery({
+    queryKey: ["assets", page],
+    queryFn: async () =>
+      (
+        await api.get<Asset[]>("/assets", {
+          params: { limit: PAGE_SIZE + 1, offset: page * PAGE_SIZE },
+        })
+      ).data,
+    placeholderData: keepPreviousData,
   })
+  const hasNextPage = rows.length > PAGE_SIZE
+  const assets = rows.slice(0, PAGE_SIZE)
 
   const createAsset = useMutation({
     mutationFn: async () => api.post("/assets", { name, asset_type: assetType, metadata: {} }),
@@ -25,6 +37,7 @@ export function AssetListPage() {
       queryClient.invalidateQueries({ queryKey: ["assets"] })
       setShowForm(false)
       setName("")
+      setPage(0)
     },
   })
 
@@ -33,7 +46,7 @@ export function AssetListPage() {
     if (name.trim()) createAsset.mutate()
   }
 
-  const sorted = [...assets].sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status])
+  const isLoading = isFetching && rows.length === 0
 
   return (
     <Layout>
@@ -86,11 +99,13 @@ export function AssetListPage() {
 
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
         {isLoading && <p className="p-6 text-sm text-slate-400">Cargando...</p>}
-        {!isLoading && sorted.length === 0 && (
-          <p className="p-6 text-center text-sm text-slate-400">Sin activos todavía — crea el primero.</p>
+        {!isLoading && assets.length === 0 && (
+          <p className="p-6 text-center text-sm text-slate-400">
+            {page === 0 ? "Sin activos todavía — crea el primero." : "No hay más activos."}
+          </p>
         )}
         <ul className="divide-y divide-slate-100">
-          {sorted.map((asset) => (
+          {assets.map((asset) => (
             <li key={asset.id}>
               <Link
                 to={`/assets/${asset.id}`}
@@ -107,6 +122,26 @@ export function AssetListPage() {
           ))}
         </ul>
       </div>
+
+      {(page > 0 || hasNextPage) && (
+        <div className="mt-4 flex items-center justify-between">
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={page === 0}
+            className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            ← Anterior
+          </button>
+          <span className="text-xs text-slate-400">Página {page + 1}</span>
+          <button
+            onClick={() => setPage((p) => p + 1)}
+            disabled={!hasNextPage}
+            className="rounded-md border border-slate-200 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            Siguiente →
+          </button>
+        </div>
+      )}
     </Layout>
   )
 }

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import case
 from sqlalchemy.orm import Session
 
 from app.api.deps import Claims, get_current_claims, get_tenant_scoped_db
@@ -6,6 +7,13 @@ from app.models.asset import Asset
 from app.schemas.asset import AssetCreate, AssetOut
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+# Asset.status es un String plano ('ok'/'warning'/'critical'), no un enum con
+# orden propio en SQL — .desc() ordenaba alfabéticamente (warning, ok,
+# critical), justo al revés de la severidad. Con paginación real (offset
+# server-side) ese bug se vuelve visible: un activo crítico podía terminar en
+# una página que el usuario nunca llega a ver.
+_SEVERITY_RANK = case((Asset.status == "critical", 0), (Asset.status == "warning", 1), else_=2)
 
 
 @router.get("", response_model=list[AssetOut])
@@ -19,7 +27,7 @@ def list_assets(
     return (
         db.query(Asset)
         .filter(Asset.tenant_id == claims.tenant_id)
-        .order_by(Asset.status.desc(), Asset.name)
+        .order_by(_SEVERITY_RANK, Asset.name)
         .offset(offset)
         .limit(limit)
         .all()
