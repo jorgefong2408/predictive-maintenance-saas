@@ -1,45 +1,18 @@
-export type AssetStatus = "ok" | "warning" | "critical"
+// Alias sobre los tipos generados desde el OpenAPI del backend (ver
+// src/lib/api-schema.ts, "npm run codegen") -- una sola fuente de verdad
+// (los schemas de Pydantic) en vez de mantener estas formas a mano en
+// paralelo, que era como estaba antes y podía irse desalineando en
+// silencio. Este archivo existe solo para no tener que tocar cada import
+// `from "../types"` que ya existe en el resto del frontend.
+import type { components } from "./lib/api-schema"
 
-export interface Asset {
-  id: string
-  name: string
-  asset_type: string
-  external_ref: string | null
-  status: AssetStatus
-  metadata: Record<string, unknown>
-  created_at: string
-}
+export type Asset = components["schemas"]["AssetOut"]
+export type AssetStatus = Asset["status"]
 
-export interface SensorReading {
-  time: string
-  asset_id: string
-  sensor_name: string
-  value: number
-  unit: string | null
-}
+export type SensorReading = components["schemas"]["SensorReadingOut"]
 
-export type PredictionType = "rul_days" | "anomaly_score" | "failure_probability"
+export type Prediction = components["schemas"]["PredictionOut"]
+export type PredictionType = Prediction["prediction_type"]
 
-export interface Prediction {
-  id: string
-  asset_id: string
-  predicted_at: string
-  model_name: string
-  model_version: string
-  prediction_type: PredictionType
-  value: number
-  metadata: Record<string, unknown>
-}
-
-export type AlertSeverity = "info" | "warning" | "critical"
-
-export interface Alert {
-  id: string
-  asset_id: string
-  triggered_at: string
-  severity: AlertSeverity
-  alert_type: string
-  message: string
-  acknowledged_at: string | null
-  resolved_at: string | null
-}
+export type Alert = components["schemas"]["AlertOut"]
+export type AlertSeverity = Alert["severity"]

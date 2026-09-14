@@ -15,6 +15,10 @@ node_modules/
 frontend/dist/
 frontend/.vite/
 frontend/coverage/
+# Artefacto intermedio del codegen de tipos (ver frontend/package.json,
+# "codegen") -- el contrato versionado es frontend/src/lib/api-schema.ts,
+# generado a partir de este archivo, no este archivo en sí.
+frontend/openapi.json
 
 # Env / secrets
 .env

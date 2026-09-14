@@ -10,7 +10,13 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "codegen": "openapi-typescript openapi.json -o src/lib/api-schema.ts"
+  },
+  "overrides": {
+    "openapi-typescript": {
+      "typescript": "$typescript"
+    }
   },
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
@@ -33,6 +39,7 @@
     "@vitest/coverage-v8": "^5.0.0",
     "axios-mock-adapter": "^2.1.0",
     "jsdom": "^30.0.1",
+    "openapi-typescript": "^7.13.0",
     "oxlint": "^1.81.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
